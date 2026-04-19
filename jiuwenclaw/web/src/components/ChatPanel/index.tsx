@@ -208,7 +208,9 @@ export function ChatPanel({
           </>
         ) : (
           <div className="chat-welcome">
-            <img src="/logo.png" alt={t('chat.welcomeLogoAlt')} className="chat-welcome__logo" />
+            <div className="chat-welcome__mark" aria-label={t('chat.welcomeLogoAlt')}>
+              DEEP CANVAS
+            </div>
             <h2 className="chat-welcome__heading">{t('chat.welcomeHeading')}</h2>
             <p className="chat-welcome__subtext">
               {t('chat.welcomeSubtext')}

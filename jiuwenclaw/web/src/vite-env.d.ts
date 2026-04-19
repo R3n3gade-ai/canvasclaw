@@ -3,6 +3,7 @@
 interface ImportMetaEnv {
   readonly VITE_API_BASE?: string;
   readonly VITE_WS_BASE?: string;
+  readonly VITE_CESDK_LICENSE?: string;
 }
 
 interface ImportMeta {

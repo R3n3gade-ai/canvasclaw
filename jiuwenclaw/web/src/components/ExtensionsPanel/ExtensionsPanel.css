@@ -32,6 +32,32 @@
   color: var(--text);
 }
 
+.extensions-panel__import-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.extensions-panel__import-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.extensions-panel__path-input {
+  flex: 1;
+  padding: 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.extensions-panel__path-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .extensions-panel__import-button {
   display: inline-flex;
   align-items: center;

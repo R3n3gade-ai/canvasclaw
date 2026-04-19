@@ -235,6 +235,38 @@ function isProviderKey(key: string): boolean {
   return key.endsWith("_provider");
 }
 
+function getProviderOptions(key: string): Array<{ value: string; label: string }> {
+  if (key.startsWith("video_")) {
+    return [
+      { value: "OpenAI", label: "OpenAI" },
+      { value: "Gemini", label: "Google Gemini" },
+      { value: "FalAI", label: "FAL.ai" },
+    ];
+  }
+  if (key.startsWith("audio_")) {
+    return [
+      { value: "OpenAI", label: "OpenAI" },
+      { value: "Google", label: "Google" },
+      { value: "ElevenLabs", label: "ElevenLabs" },
+    ];
+  }
+  if (key.startsWith("vision_")) {
+    return [
+      { value: "OpenAI", label: "OpenAI" },
+      { value: "Google", label: "Google" },
+      { value: "Gemini", label: "Google Gemini" },
+    ];
+  }
+  return [
+    { value: "OpenAI", label: "OpenAI" },
+    { value: "Gemini", label: "Google Gemini" },
+    { value: "Anthropic", label: "Anthropic Claude" },
+    { value: "DashScope", label: "DashScope" },
+    { value: "SiliconFlow", label: "SiliconFlow" },
+    { value: "InferenceAffinity", label: "InferenceAffinity" },
+  ];
+}
+
 /** 表格列显示用：video_api_base -> api_base，避免与分组标题重复 */
 /** i18n 键名映射：字段名 -> 翻译 key（显示名 / placeholder） */
 const KEY_DISPLAY_I18N: Record<string, string> = {
@@ -347,22 +379,26 @@ function GroupSection({
                         *
                       </span>
                       <div className="h-[calc(1.25rem+16px)] flex items-center">
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={parseBoolValue(draftValues[key] ?? value)}
-                          onClick={() => onChange(key, parseBoolValue(draftValues[key] ?? value) ? "false" : "true")}
+                        <label
+                          aria-label={getBooleanKeyLabel(key, t) ?? key}
                           title={getBooleanKeyLabel(key, t) ?? key}
                           className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
                             parseBoolValue(draftValues[key] ?? value) ? "bg-ok" : "bg-secondary"
                           }`}
                         >
+                          <input
+                            type="checkbox"
+                            className="sr-only"
+                            checked={parseBoolValue(draftValues[key] ?? value)}
+                            onChange={() => onChange(key, parseBoolValue(draftValues[key] ?? value) ? "false" : "true")}
+                            aria-label={getBooleanKeyLabel(key, t) ?? key}
+                          />
                           <span
                             className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${
                               parseBoolValue(draftValues[key] ?? value) ? "translate-x-4" : "translate-x-0"
                             }`}
                           />
-                        </button>
+                        </label>
                       </div>
                     </div>
                   ) : isProviderKey(key) ? (
@@ -379,17 +415,14 @@ function GroupSection({
                         <select
                           value={draftValues[key] ?? value}
                           onChange={(e) => onChange(key, e.target.value)}
+                          aria-label={getKeyDisplayLabel(key, t)}
+                          title={getKeyDisplayLabel(key, t)}
                           className="w-full rounded-md border border-border bg-bg px-3 py-2 text-[13px] outline-none focus:border-accent"
                         >
                           <option value="" disabled>{t('config.selectModelProvider')}</option>
-                          <option value="OpenAI">OpenAI</option>
-                          {!key.includes('video_') && !key.includes('audio_') && !key.includes('vision_') && (
-                            <>
-                              <option value="DashScope">DashScope</option>
-                              <option value="SiliconFlow">SiliconFlow</option>
-                              <option value="InferenceAffinity">InferenceAffinity</option>
-                            </>
-                          )}
+                          {getProviderOptions(key).map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
                         </select>
                       </div>
                     </div>

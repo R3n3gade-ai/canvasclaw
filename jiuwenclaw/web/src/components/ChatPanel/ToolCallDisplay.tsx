@@ -20,13 +20,11 @@ export function ToolCallDisplay({ toolCall, toolResult }: ToolCallDisplayProps) 
   const [isExpanded, setIsExpanded] = useState(false);
 
   if (toolCall) {
-    // session 类型：仅显示 会话任务：【description】，不显示 "session" 名称
     const isSession = toolCall.name === 'session';
     const displayTitle = isSession
-      ? (toolCall.formatted_args || '会话任务已完成')
+      ? (toolCall.formatted_args || 'Session task completed')
       : (toolCall.description ? `${toolCall.name}: ${toolCall.description}` : toolCall.name);
 
-    // 使用格式化的参数摘要（session 类型时 subtitle 已融入 title，不再重复显示）
     const displaySubtitle = isSession ? '' : (toolCall.formatted_args || '');
 
     return (

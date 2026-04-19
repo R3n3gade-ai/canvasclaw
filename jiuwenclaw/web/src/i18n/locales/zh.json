@@ -54,9 +54,9 @@
     "placeholderProcessing": "处理中，输入新指令可中断...",
     "placeholderProcessingQueue": "处理中，输入新指令将加入等待队列...",
     "placeholderVoice": "正在听取语音...",
-    "welcomeLogoAlt": "JiuwenClaw 标志",
-    "welcomeHeading": "你好，我是JiuwenClaw，很高兴认识你！",
-    "welcomeSubtext": "我可以帮你回答问题，解决疑惑，还可以帮你完成一些任务。",
+    "welcomeLogoAlt": "Deep Canvas 字标",
+    "welcomeHeading": "你好，我是 DEEP CANVAS。",
+    "welcomeSubtext": "我可以帮你规划工作、整理设置，并持续推进任务执行。",
     "welcomeSuggestions": {
       "journey": "让我们开启一段新的旅程吧！",
       "skills": "能告诉我你有哪些技能吗？"
@@ -97,7 +97,48 @@
     "message": "消息",
     "time": "时间",
     "heartbeatClick": "心跳消息，点击查看",
-    "poweredBy": "Powered by openJiuwen"
+    "poweredBy": "DEEP CANVAS",
+    "blankTitle": "预留面板",
+    "blankBody": "这个分页保留给后续模块。",
+    "tabs": {
+      "tasks": "Tasks",
+      "connections": "Connections",
+      "features": "Features",
+      "blankOne": "Connections",
+      "blankTwo": "Features"
+    },
+    "featuresPanel": {
+      "items": {
+        "kanban": {
+          "badge": "KB",
+          "title": "Kanban"
+        },
+        "creativeStudio": {
+          "badge": "CS",
+          "title": "Creative Studio"
+        },
+        "socialStation": {
+          "badge": "SS",
+          "title": "Social Station"
+        },
+        "crm": {
+          "badge": "CRM",
+          "title": "CRM"
+        },
+        "leadGen": {
+          "badge": "LG",
+          "title": "Lead Gen"
+        },
+        "videoMeeting": {
+          "badge": "VM",
+          "title": "Video Meeting"
+        },
+        "projectFlow": {
+          "badge": "PF",
+          "title": "Project Flow"
+        }
+      }
+    }
   },
   "todoList": {
     "title": "任务列表",
@@ -107,28 +148,28 @@
     "completed": "已完成"
   },
   "sessions": {
-    "title": "会话管理",
-    "subtitle": "浏览并管理会话与文件",
-    "history": "历史会话",
-    "count": "最多 20 条，当前 {{count}} 条",
-    "empty": "暂无会话",
-    "restore": "恢复会话",
-    "restoreDisabledNotConnected": "连接断开，无法恢复会话",
-    "restoreDisabledProcessing": "助手处理中，请结束当前任务后再恢复会话",
-    "restoreDisabledUnsupported": "仅支持恢复 web 前端会话（sess_）",
-    "restoreEmpty": "该会话没有可恢复的消息（为空或均被过滤）。仍可在此继续对话。",
-    "delete": "删除会话",
-    "files": "会话文件",
-    "selectFirst": "请先选择会话",
-    "loadingFiles": "加载文件中...",
-    "emptyFiles": "暂无文件",
-    "folder": "文件夹",
-    "notPreviewable": "不可预览",
-    "selectFile": "请选择一个文件查看",
-    "noneSelected": "未选择会话",
-    "unknownSession": "未知会话-未知时间",
-    "unknownTime": "未知时间",
-    "deleteConfirm": "确认删除会话 {{session}} ?\n将删除该会话目录下所有文件。",
+    "title": "Session Management",
+    "subtitle": "Browse and manage sessions and files",
+    "history": "Session History",
+    "count": "Up to 20 items, currently {{count}}",
+    "empty": "No sessions",
+    "restore": "Restore session",
+    "restoreDisabledNotConnected": "Disconnected: cannot restore session",
+    "restoreDisabledProcessing": "Assistant is busy. Finish the current task before restoring a session",
+    "restoreDisabledUnsupported": "Only web frontend sessions (sess_) can be restored",
+    "restoreEmpty": "This session has no restorable messages. You can still continue the conversation here.",
+    "delete": "Delete session",
+    "files": "Session Files",
+    "selectFirst": "Select a session first",
+    "loadingFiles": "Loading files...",
+    "emptyFiles": "No files",
+    "folder": "Folder",
+    "notPreviewable": "Not previewable",
+    "selectFile": "Select a file to view",
+    "noneSelected": "No session selected",
+    "unknownSession": "Unknown session - unknown time",
+    "unknownTime": "Unknown time",
+    "deleteConfirm": "Delete session {{session}}?\nThis removes all files in that session directory.",
     "prefixes": {
       "session": "会话",
       "cron": "定时",
@@ -149,7 +190,14 @@
     }
   },
   "sessionSidebar": {
-    "newSession": "新会话"
+    "newSession": "New Session",
+    "blankTitle": "Blank Panel",
+    "blankBody": "This tab is reserved for a future module.",
+    "tabs": {
+      "settings": "Settings",
+      "blankOne": "Blank",
+      "blankTwo": "Blank"
+    }
   },
   "heartbeat": {
     "title": "心跳管理",
@@ -176,9 +224,12 @@
     "latestContent": "最近心跳内容",
     "none": "暂无",
     "channels": {
-      "web": "网页 (web)",
+      "web": "Web (web)",
+      "telegram": "Telegram (telegram)",
+      "discord": "Discord (discord)",
+      "whatsapp": "WhatsApp (whatsapp)",
       "feishu": "飞书 (feishu)",
-      "wechat": "微信 (wechat)",
+      "wechat": "WeChat (wechat)",
       "wecom": "企业微信 (wecom)",
       "xiaoyi": "小艺 (xiaoyi)",
       "dingtalk": "钉钉 (dingtalk)"
@@ -477,9 +528,12 @@
       "wakeOffset": "唤醒偏移秒数"
     },
     "targets": {
-      "web": "网页 (web)",
+      "web": "Web (web)",
+      "telegram": "Telegram (telegram)",
+      "discord": "Discord (discord)",
+      "whatsapp": "WhatsApp (whatsapp)",
       "feishu": "飞书 (feishu)",
-      "wechat": "微信 (wechat)",
+      "wechat": "WeChat (wechat)",
       "wecom": "企业微信 (wecom)",
       "xiaoyi": "小艺 (xiaoyi)",
       "dingtalk": "钉钉 (dingtalk)"
@@ -558,43 +612,43 @@
     }
   },
   "skills": {
-    "title": "技能管理",
-    "subtitle": "管理并安装智能体可用的技能。",
+    "title": "Skill Management",
+    "subtitle": "Manage and install skills available to the agent.",
     "actions": {
-      "install": "安装",
-      "uninstall": "卸载",
-      "importLocal": "导入本地技能",
-      "sourceManager": "源管理",
-      "backToList": "返回列表",
-      "viewEvolution": "查看技能经验"
+      "install": "Install",
+      "uninstall": "Uninstall",
+      "importLocal": "Import Local Skill",
+      "sourceManager": "Source Manager",
+      "backToList": "Back to List",
+      "viewEvolution": "View Skill Experience"
     },
-    "builtIn": "内置",
+    "builtIn": "Built-in",
     "status": {
-      "installed": "已安装",
-      "notInstalled": "未安装",
-      "builtIn": "内置"
+      "installed": "Installed",
+      "notInstalled": "Not installed",
+      "builtIn": "Built-in"
     },
     "source": {
-      "local": "本地",
-      "project": "项目",
-      "builtin": "内置",
-      "unknown": "未知"
+      "local": "Local",
+      "project": "Project",
+      "builtin": "Built-in",
+      "unknown": "Unknown"
     },
-    "sourceLabel": "来源",
-    "statusLabel": "状态",
-    "versionLabel": "版本",
-    "authorLabel": "作者",
-    "allowedTools": "允许工具",
-    "unlimited": "无限制",
-    "contentPreview": "内容预览",
-    "noDescription": "暂无描述",
-    "noContent": "暂无内容",
-    "searchPlaceholder": "搜索技能名称、描述或标签",
-    "totalCount": "共 {{count}} 个",
-    "listError": "获取技能失败，请检查后端服务",
-    "noMatches": "暂无匹配的技能",
-    "detailLoading": "加载详情中...",
-    "detailError": "加载详情失败",
+    "sourceLabel": "Source",
+    "statusLabel": "Status",
+    "versionLabel": "Version",
+    "authorLabel": "Author",
+    "allowedTools": "Allowed Tools",
+    "unlimited": "Unlimited",
+    "contentPreview": "Content Preview",
+    "noDescription": "No description",
+    "noContent": "No content",
+    "searchPlaceholder": "Search skill names, descriptions, or tags",
+    "totalCount": "{{count}} total",
+    "listError": "Failed to load skills. Please check the backend service.",
+    "noMatches": "No matching skills",
+    "detailLoading": "Loading details...",
+    "detailError": "Failed to load details",
     "evolution": {
       "closeAria": "关闭技能经验弹窗",
       "title": "技能经验：{{name}}",
@@ -920,17 +974,17 @@
     "restartSuccessDesc": "后端已启动成功，窗口将在 5 秒后自动关闭。"
   },
   "extensions": {
-    "title": "内置插件",
-    "description": "管理自定义 Rail 扩展",
-    "importTitle": "导入内置插件",
-    "importButton": "导入",
-    "importHint": "文件夹要求：1) 英文名称 2) 包含 rail.py 入口文件",
-    "noExtensions": "暂无内置插件",
-    "deleteButton": "删除",
-    "helpTitle": "使用说明",
-    "help0": "扩展文件夹必须包含 rail.py 作为入口文件",
-    "help1": "Rail 扩展文件必须继承 DeepAgentRail 或 AgentRail 基类",
-    "help2": "扩展文件会被保存到 ~/.jiuwenclaw/agent/jiuwenclaw_workspace/extensions/ 目录"
+    "title": "Extensions",
+    "description": "Manage custom Rail extensions",
+    "importTitle": "Import Extension",
+    "importButton": "Import",
+    "importHint": "Folder requirements: 1) English name 2) Contains rail.py entry file",
+    "noExtensions": "No extensions",
+    "deleteButton": "Delete",
+    "helpTitle": "Usage Guide",
+    "help0": "Extension folder must contain rail.py as the entry file",
+    "help1": "Rail extension files must inherit from DeepAgentRail or AgentRail base class",
+    "help2": "Extension files are saved to ~/.jiuwenclaw/agent/jiuwenclaw_workspace/extensions/ directory"
   },
   "ownerScopes": {
     "title": "分身权限配置",

@@ -192,11 +192,10 @@ export default function CronPanel({ sessionId }: CronPanelProps) {
   // 目标选项
   const targetOptions = [
     { value: 'web', label: t('cron.targets.web') },
-    { value: 'feishu', label: t('cron.targets.feishu') },
-    { value: 'wecom', label: t('cron.targets.wecom') },
+    { value: 'telegram', label: t('cron.targets.telegram') },
+    { value: 'discord', label: t('cron.targets.discord') },
+    { value: 'whatsapp', label: t('cron.targets.whatsapp') },
     { value: 'wechat', label: t('cron.targets.wechat') },
-    { value: 'xiaoyi', label: t('cron.targets.xiaoyi'), disabled: true, style: { color: '#8c8c96ff' } },
-    { value: 'dingtalk', label: t('cron.targets.dingtalk'), disabled: true, style: { color: '#8c8c96ff' } },
   ];
 
   // 加载任务列表
@@ -539,7 +538,7 @@ export default function CronPanel({ sessionId }: CronPanelProps) {
                           data-testid="cron-create-target"
                         >
                           {targetOptions.map((option) => (
-                            <option key={option.value} value={option.value} disabled={option.disabled} style={option.style}>
+                            <option key={option.value} value={option.value}>
                               {option.label}
                             </option>
                           ))}
@@ -697,7 +696,7 @@ export default function CronPanel({ sessionId }: CronPanelProps) {
                               className="w-full rounded-md border border-border bg-bg px-3 py-2 text-[13px] text-text outline-none focus:border-accent"
                             >
                               {targetOptions.map((option) => (
-                                <option key={option.value} value={option.value} disabled={option.disabled} style={option.style}>
+                                <option key={option.value} value={option.value}>
                                   {option.label}
                                 </option>
                               ))}

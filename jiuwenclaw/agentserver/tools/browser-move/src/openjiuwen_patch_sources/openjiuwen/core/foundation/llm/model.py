@@ -24,6 +24,11 @@ _CLIENT_TYPE_REGISTRY: Dict[str, Type[BaseModelClient]] = {
     "OpenRouter": OpenAIModelClient,
     "SiliconFlow": SiliconFlowModelClient,
     "DashScope": DashScopeModelClient,
+    "Gemini": OpenAIModelClient,
+    "Anthropic": OpenAIModelClient,
+    "Google": OpenAIModelClient,
+    "FalAI": OpenAIModelClient,
+    "ElevenLabs": OpenAIModelClient,
 }
 
 

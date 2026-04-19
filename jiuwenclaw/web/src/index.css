@@ -28,66 +28,65 @@
 @tailwind utilities;
 
 /* ===========================================
-   CSS Variables - JiuwenClaw Design System
-   =========================================== */
+  CSS Variables - Deep Canvas Design System
+  =========================================== */
 
 :root {
-  /* Background - Warmer dark with depth */
-  --bg: #0f1320;
-  --bg-accent: #131a2a;
-  --bg-elevated: #1a2234;
-  --bg-hover: #232f46;
-  --bg-muted: #202b42;
+  /* Background - Black and layered grey */
+  --bg: #050607;
+  --bg-accent: #090b0c;
+  --bg-elevated: #0f1315;
+  --bg-hover: #161d20;
+  --bg-muted: #111719;
   --bg-content: #f5f5f5;
 
-  /* Card / Surface - More contrast between levels */
-  --card: #171f30;
+  /* Card / Surface */
+  --card: #0f1315;
   --card-foreground: #f4f4f5;
   --card-highlight: rgba(255, 255, 255, 0.05);
-  --popover: #171f30;
+  --popover: #0f1315;
   --popover-foreground: #f4f4f5;
 
   /* Panel */
-  --panel: #101728;
-  --panel-strong: #182134;
-  --panel-hover: #25334d;
-  --chrome: rgba(15, 19, 32, 0.92);
-  --chrome-strong: rgba(15, 19, 32, 0.97);
+  --panel: #080b0c;
+  --panel-strong: #12181a;
+  --panel-hover: #1c2628;
+  --chrome: rgba(5, 7, 8, 0.92);
+  --chrome-strong: rgba(5, 7, 8, 0.98);
 
   /* Text - Slightly warmer */
   --text: #e4e4e7;
   --text-strong: #fafafa;
   --chat-text: #e4e4e7;
-  --muted: #71717a;
-  --muted-strong: #52525b;
-  --muted-foreground: #71717a;
+  --muted: #7e8c91;
+  --muted-strong: #5e6a6f;
+  --muted-foreground: #7e8c91;
 
-  /* Border - Subtle but defined */
-  --border: #243049;
-  --border-strong: #33456b;
-  --border-hover: #47618f;
-  --border-accent: rgba(96, 165, 250, 0.5);
+  /* Border */
+  --border: #1a2628;
+  --border-strong: #254548;
+  --border-hover: #2f5d60;
+  --border-accent: rgba(34, 211, 197, 0.48);
   --border-ok: rgba(34, 197, 94, 0.5);
   --border-danger: rgba(239, 68, 68, 0.5);
-  --input: #283550;
-  --ring: #60a5fa;
+  --input: #1a2628;
+  --ring: #22d3c5;
 
-  /* Accent - Blue theme (brighter for dark mode visibility) */
-  --accent: #60a5fa;
-  --accent-hover: #93c5fd;
-  --accent-muted: #60a5fa;
-  --accent-subtle: rgba(96, 165, 250, 0.18);
-  --accent-foreground: #1e293b;
-  --accent-glow: rgba(96, 165, 250, 0.3);
-  --primary: #60a5fa;
-  --primary-foreground: #1e293b;
+  /* Accent - Teal */
+  --accent: #22d3c5;
+  --accent-hover: #54e6da;
+  --accent-muted: #22d3c5;
+  --accent-subtle: rgba(34, 211, 197, 0.14);
+  --accent-foreground: #031412;
+  --accent-glow: rgba(34, 211, 197, 0.24);
+  --primary: #22d3c5;
+  --primary-foreground: #031412;
 
-  /* Secondary - Teal accent for variety */
-  --secondary: #1e2028;
+  --secondary: #101517;
   --secondary-foreground: #f4f4f5;
-  --accent-2: #14b8a6;
-  --accent-2-muted: rgba(20, 184, 166, 0.7);
-  --accent-2-subtle: rgba(20, 184, 166, 0.15);
+  --accent-2: #17b6aa;
+  --accent-2-muted: rgba(23, 182, 170, 0.7);
+  --accent-2-subtle: rgba(23, 182, 170, 0.12);
 
   /* Semantic - More saturated */
   --ok: #22c55e;
@@ -104,7 +103,7 @@
   --info: #3b82f6;
 
   /* Focus - With glow */
-  --focus: rgba(96, 165, 250, 0.25);
+  --focus: rgba(34, 211, 197, 0.22);
   --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--ring);
   --focus-glow: 0 0 0 2px var(--bg), 0 0 0 4px var(--ring), 0 0 20px var(--accent-glow);
 
@@ -142,8 +141,8 @@
   /* Shell Layout */
   --shell-pad: 16px;
   --shell-gap: 16px;
-  --shell-nav-width: 220px;
-  --tool-panel-width: var(--shell-nav-width);
+  --shell-nav-width: 312px;
+  --tool-panel-width: 312px;
   --statusbar-right-space: var(--tool-panel-width);
   --shell-topbar-height: 56px;
   --shell-focus-duration: 200ms;
@@ -264,8 +263,8 @@ body {
 
 :root:not([data-theme="light"]) body {
   background:
-    radial-gradient(1200px 480px at 55% -20%, rgba(37, 99, 235, 0.16), transparent 60%),
-    radial-gradient(720px 320px at 18% 8%, rgba(20, 184, 166, 0.08), transparent 65%),
+    radial-gradient(1100px 460px at 52% -10%, rgba(34, 211, 197, 0.12), transparent 58%),
+    radial-gradient(720px 340px at 15% 12%, rgba(255, 255, 255, 0.04), transparent 68%),
     var(--bg);
 }
 
@@ -448,15 +447,26 @@ select {
     position: sticky;
     top: 0;
     z-index: 40;
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
     gap: 16px;
     padding: 0 20px;
     height: var(--shell-topbar-height);
     border-bottom: 1px solid var(--border);
-    background: var(--chrome);
-    backdrop-filter: blur(10px);
+    background: linear-gradient(180deg, var(--chrome-strong), var(--chrome));
+    backdrop-filter: blur(14px);
+  }
+
+  .topbar-spacer {
+    min-width: 0;
+  }
+
+  .topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    justify-self: end;
   }
 
   /* Brand */
@@ -464,6 +474,27 @@ select {
     display: flex;
     align-items: center;
     gap: 10px;
+  }
+
+  .brand--centered {
+    justify-self: center;
+  }
+
+  .brand-mark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid color-mix(in oklab, var(--accent) 36%, var(--border));
+    border-radius: 10px;
+    background: linear-gradient(180deg, color-mix(in oklab, var(--panel-strong) 90%, black), color-mix(in oklab, var(--card) 88%, black));
+    box-shadow: 0 0 0 1px rgba(34, 211, 197, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    color: var(--accent);
+    font-family: var(--font-display);
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
   }
 
   .brand-logo {
@@ -495,17 +526,18 @@ select {
 
   .brand-title {
     font-size: 16px;
-    font-weight: 700;
-    letter-spacing: -0.03em;
+    font-weight: 800;
+    letter-spacing: 0.18em;
     line-height: 1.1;
     color: var(--text-strong);
+    text-transform: uppercase;
   }
 
   .brand-sub {
     font-size: var(--font-size-2xs);
-    font-weight: 500;
+    font-weight: 700;
     color: var(--muted);
-    letter-spacing: 0.05em;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     line-height: 1;
   }
@@ -515,8 +547,8 @@ select {
     grid-area: nav;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 16px 12px;
-    background: var(--panel);
+    padding: 14px 12px;
+    background: linear-gradient(180deg, color-mix(in oklab, var(--panel) 92%, black), color-mix(in oklab, var(--panel-strong) 70%, black));
     scrollbar-width: none;
     min-height: 0;
     border-right: 1px solid var(--border);
@@ -538,7 +570,7 @@ select {
     padding: 8px 10px;
     border-radius: var(--radius-md);
     border: 1px solid transparent;
-    background: transparent;
+    background: rgba(255, 255, 255, 0.015);
     color: var(--muted);
     cursor: pointer;
     text-decoration: none;
@@ -550,13 +582,14 @@ select {
 
   .nav-item:hover {
     color: var(--text);
-    background: var(--bg-hover);
+    background: color-mix(in oklab, var(--panel-hover) 74%, black);
     text-decoration: none;
   }
 
   .nav-item.active {
     color: var(--text-strong);
-    background: var(--accent-subtle);
+    background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 14%, var(--panel-strong)), color-mix(in oklab, var(--accent) 7%, var(--panel)));
+    border-color: color-mix(in oklab, var(--accent) 34%, var(--border));
   }
 
   .nav-item.active .nav-item__icon {
@@ -572,7 +605,9 @@ select {
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    background: linear-gradient(180deg, var(--bg-accent), var(--bg));
+    background:
+      radial-gradient(680px 260px at 50% 0%, rgba(34, 211, 197, 0.07), transparent 62%),
+      linear-gradient(180deg, var(--bg-accent), var(--bg));
   }
 
   :root[data-theme="light"] .content {
@@ -605,7 +640,7 @@ select {
     border: 1px solid var(--border);
     padding: 6px 12px;
     border-radius: var(--radius-full);
-    background: var(--secondary);
+    background: color-mix(in oklab, var(--secondary) 92%, black);
     font-size: var(--font-size-sm);
     font-weight: 500;
     transition: border-color var(--duration-fast) ease;
@@ -1257,6 +1292,18 @@ select {
     border-radius: var(--radius-full);
     border: 1px solid var(--border);
     background: var(--secondary);
+  }
+
+  .theme-toggle__track--system {
+    --theme-index: 0;
+  }
+
+  .theme-toggle__track--dark {
+    --theme-index: 1;
+  }
+
+  .theme-toggle__track--light {
+    --theme-index: 2;
   }
 
   .theme-toggle__indicator {

@@ -348,10 +348,10 @@ export function HeartbeatPanel() {
                       className="w-full rounded-md border border-border bg-bg px-3 py-2 text-[13px] text-text outline-none focus:border-accent"
                     >
                       <option value="web">{t('heartbeat.channels.web')}</option>
-                      <option value="feishu">{t('heartbeat.channels.feishu')}</option>
-                      <option value="wecom">{t('heartbeat.channels.wecom')}</option>
-                      <option value="xiaoyi" disabled style={{ color: '#8c8c96ff'}}>{t('heartbeat.channels.xiaoyi')}</option>
-                      <option value="dingtalk" disabled style={{ color: '#8c8c96ff' }}>{t('heartbeat.channels.dingtalk')}</option>
+                      <option value="telegram">{t('heartbeat.channels.telegram')}</option>
+                      <option value="discord">{t('heartbeat.channels.discord')}</option>
+                      <option value="whatsapp">{t('heartbeat.channels.whatsapp')}</option>
+                      <option value="wechat">{t('heartbeat.channels.wechat')}</option>
                     </select>
                   </label>
 

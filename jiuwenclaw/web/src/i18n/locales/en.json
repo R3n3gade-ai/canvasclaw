@@ -54,9 +54,9 @@
     "placeholderProcessing": "Processing, enter to interrupt...",
     "placeholderProcessingQueue": "Processing, new input will join the queue...",
     "placeholderVoice": "Listening...",
-    "welcomeLogoAlt": "JiuwenClaw logo",
-    "welcomeHeading": "Hi, I'm JiuwenClaw. Nice to meet you!",
-    "welcomeSubtext": "I can answer questions, clear up confusion, and help you complete tasks.",
+    "welcomeLogoAlt": "Deep Canvas wordmark",
+    "welcomeHeading": "Hello! I am DEEP CANVAS.",
+    "welcomeSubtext": "I can help plan work, organize settings, and keep task execution moving.",
     "welcomeSuggestions": {
       "journey": "Let's begin a brand-new journey!",
       "skills": "Can you tell me what skills you have?"
@@ -97,7 +97,48 @@
     "message": "Message",
     "time": "Time",
     "heartbeatClick": "Heartbeat message, click to view",
-    "poweredBy": "Powered by openJiuwen"
+    "poweredBy": "DEEP CANVAS",
+    "blankTitle": "Blank Panel",
+    "blankBody": "This tab is reserved for a future module.",
+    "tabs": {
+      "tasks": "Tasks",
+      "connections": "Connections",
+      "features": "Features",
+      "blankOne": "Blank",
+      "blankTwo": "Blank"
+    },
+    "featuresPanel": {
+      "items": {
+        "kanban": {
+          "badge": "KB",
+          "title": "Kanban"
+        },
+        "creativeStudio": {
+          "badge": "CS",
+          "title": "Creative Studio"
+        },
+        "socialStation": {
+          "badge": "SS",
+          "title": "Social Station"
+        },
+        "crm": {
+          "badge": "CRM",
+          "title": "CRM"
+        },
+        "leadGen": {
+          "badge": "LG",
+          "title": "Lead Gen"
+        },
+        "videoMeeting": {
+          "badge": "VM",
+          "title": "Video Meeting"
+        },
+        "projectFlow": {
+          "badge": "PF",
+          "title": "Project Flow"
+        }
+      }
+    }
   },
   "todoList": {
     "title": "Task list",
@@ -149,7 +190,14 @@
     }
   },
   "sessionSidebar": {
-    "newSession": "New session"
+    "newSession": "New session",
+    "blankTitle": "Blank Panel",
+    "blankBody": "This tab is reserved for a future module.",
+    "tabs": {
+      "settings": "Settings",
+      "blankOne": "Blank",
+      "blankTwo": "Blank"
+    }
   },
   "heartbeat": {
     "title": "Heartbeat Management",
@@ -177,6 +225,9 @@
     "none": "None",
     "channels": {
       "web": "Web (web)",
+      "telegram": "Telegram (telegram)",
+      "discord": "Discord (discord)",
+      "whatsapp": "WhatsApp (whatsapp)",
       "feishu": "Lark (feishu)",
       "wechat": "WeChat (wechat)",
       "wecom": "WeCom (wecom)",
@@ -478,6 +529,9 @@
     },
     "targets": {
       "web": "Web (web)",
+      "telegram": "Telegram (telegram)",
+      "discord": "Discord (discord)",
+      "whatsapp": "WhatsApp (whatsapp)",
       "feishu": "Lark (feishu)",
       "wechat": "WeChat (wechat)",
       "wecom": "WeCom (wecom)",

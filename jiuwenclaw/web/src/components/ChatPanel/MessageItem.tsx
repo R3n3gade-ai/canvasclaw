@@ -170,7 +170,7 @@ export function MessageItem({ message, autoSpeak = false }: MessageItemProps) {
  	                   </svg>
  	                 </span>
  	                 <span className="font-mono text-sm font-medium text-text">
- 	                   会话任务：【{description || '未知任务'}】已完成
+                     Session task: {description || 'Unknown task'} completed
  	                 </span>
  	                 <span className="text-text-muted text-sm">
  	                   {isExpanded ? '▼' : '▶'}

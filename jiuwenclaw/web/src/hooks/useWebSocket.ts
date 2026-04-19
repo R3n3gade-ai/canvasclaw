@@ -837,20 +837,20 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
             session_id: sessionId,
             description: description,
           },
-          description: description || '会话完成',
-          formatted_args: `会话任务：【${description || '未知任务'}】`,
+          description: description || 'Session completed',
+          formatted_args: `Session task: ${description || 'Unknown task'}`,
         };
         addToolCall(sessionToolCall);
         // 组合 description 和 result 作为完整结果
         const fullResult = description
-          ? `描述: ${description}\n\n结果: ${result}`
+          ? `Description: ${description}\n\nResult: ${result}`
           : result;
         const sessionResult: ToolResult = {
           toolName: 'session',
           result: fullResult,
           success: true,
           toolCallId: toolCallId,
-          summary: '完成',
+          summary: 'Completed',
         };
         addToolResult(sessionResult);
       }),
@@ -873,13 +873,13 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
             session_id: sessionId,
             description: description,
           },
-          description: description || '会话完成',
-          formatted_args: `会话任务：【${description || '未知任务'}】`,
+          description: description || 'Session completed',
+          formatted_args: `Session task: ${description || 'Unknown task'}`,
         };
         addToolCall(sessionToolCall);
         // 组合 description 和 result 作为完整结果
         const fullResult = description
-          ? `描述: ${description}\n\n结果: ${result}`
+          ? `Description: ${description}\n\nResult: ${result}`
           : result;
         const sessionResult: ToolResult = {
           toolName: 'session',

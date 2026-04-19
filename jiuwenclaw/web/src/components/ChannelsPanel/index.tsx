@@ -268,13 +268,9 @@ const DEFAULT_WECOM_CONF: WecomConfig = {
 
 const SUPPORTED_CHANNELS: Array<{ channel_id: SupportedChannelId; logo_src: string | null }> = [
   { channel_id: 'web', logo_src: null },
-  { channel_id: 'xiaoyi', logo_src: '/xiaoyi.webp' },
-  { channel_id: 'feishu', logo_src: '/feishu.webp' },
-  { channel_id: 'dingtalk', logo_src: '/dingtalk.png' },
   { channel_id: 'telegram', logo_src: '/telegram.webp' },
   { channel_id: 'discord', logo_src: '/discord.webp' },
   { channel_id: 'whatsapp', logo_src: '/whatsapp.png' },
-  { channel_id: 'wecom', logo_src: '/wecom.webp' },
   { channel_id: 'wechat', logo_src: '/wechat.png' },
 ];
 
@@ -729,7 +725,7 @@ function ChannelHeaderLogo({ channelId, label }: { channelId: SupportedChannelId
 export function ChannelsPanel({ isConnected }: ChannelsPanelProps) {
   const { t, i18n } = useTranslation();
   const [channels, setChannels] = useState<ChannelItem[]>(() => buildChannels([]));
-  const [activeChannelId, setActiveChannelId] = useState<SupportedChannelId>('xiaoyi');
+  const [activeChannelId, setActiveChannelId] = useState<SupportedChannelId>('web');
   const [loadState, setLoadState] = useState<LoadState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);

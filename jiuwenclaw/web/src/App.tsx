@@ -20,6 +20,7 @@ import { BrowserPanel } from './components/BrowserPanel';
 import { UpdatePanel } from './components/UpdatePanel';
 import { StatusBar } from './components/StatusBar';
 import { ExtensionsPanel } from './components/ExtensionsPanel';
+import { FeatureWorkspace } from './components/FeatureWorkspace';
 import { FEATURE_APP_UPDATER_UI } from './featureFlags';
 import { HeartbeatMessageModal } from './features/HeartbeatMessageModal';
 import {
@@ -36,6 +37,7 @@ import { useWebSocket } from './hooks';
 import { webRequest } from './services/webClient';
 import { AgentMode, UserAnswer } from './types';
 import { useSessionStore, useChatStore, useTodoStore } from './stores';
+import { useFeatureStore } from './stores/featureStore';
 import { useTranslation } from 'react-i18next';
 import i18n from './i18n';
 import './App.css';
@@ -149,7 +151,15 @@ function ThemeToggle() {
 
   return (
     <div className="theme-toggle">
-      <div className="theme-toggle__track" style={{ '--theme-index': themeIndex } as React.CSSProperties}>
+      <div
+        className={`theme-toggle__track ${
+          themeIndex === 0
+            ? 'theme-toggle__track--system'
+            : themeIndex === 1
+              ? 'theme-toggle__track--dark'
+              : 'theme-toggle__track--light'
+        }`}
+      >
         <div className="theme-toggle__indicator" />
         <button
           className={`theme-toggle__button ${theme === 'system' ? 'active' : ''}`}
@@ -246,11 +256,19 @@ function AppContent() {
   const startupUpdateCheckRef = useRef(false);
   /** 从 SkillNet 等入口跳转配置页时，首次展开对应配置分组（如第三方服务） */
   const [configInitialExpandGroup, setConfigInitialExpandGroup] = useState<string | null>(null);
+  const activeFeature = useFeatureStore((state) => state.activeFeature);
+  const closeFeature = useFeatureStore((state) => state.closeFeature);
   useEffect(() => {
     if (activeNav !== 'configpanel') {
       setConfigInitialExpandGroup(null);
     }
   }, [activeNav]);
+
+  useEffect(() => {
+    if (activeNav !== 'chat' && activeFeature) {
+      closeFeature();
+    }
+  }, [activeFeature, activeNav, closeFeature]);
 
   useEffect(() => {
     if (!FEATURE_APP_UPDATER_UI && activeNav === 'updatepanel') {
@@ -909,17 +927,17 @@ function AppContent() {
     <div className="shell" data-testid="app-shell" data-session-id={sessionId}>
       {/* Topbar */}
       <header className="topbar">
-        <div className="flex items-center gap-4">
-          <div className="brand">
-            <img src="/logo.png" alt="OpenJiuwen" className="brand-logo-img" />
-            <div className="brand-text">
-              <span className="brand-title">JiuwenClaw</span>
-              <span className="brand-sub">AI Assistant</span>
-            </div>
+        <div className="topbar-spacer" aria-hidden="true" />
+
+        <div className="brand brand--centered" aria-label="DEEP CANVAS">
+          <div className="brand-mark" aria-hidden="true">DC</div>
+          <div className="brand-text">
+            <span className="brand-title">DEEP CANVAS</span>
+            <span className="brand-sub">Executive Workspace</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="topbar-actions">
           {/* 连接状态 */}
           <div className="pill">
             <span className={`statusDot ${isConnected ? 'ok' : ''}`} />
@@ -960,43 +978,49 @@ function AppContent() {
 
         {activeNav === 'chat' && (
           <>
-            <div className="flex-1 flex min-h-0 overflow-hidden">
-              {/* Chat Panel */}
-              <div className="flex-1 flex flex-col min-w-0 min-h-0">
-                <div className="flex-1 min-h-0">
-                  <ChatPanel
-                    onSendMessage={handleSendMessage}
-                    onInterrupt={handleInterrupt}
-                    onSwitchMode={handleSwitchMode}
-                    isProcessing={isProcessing}
-                    onNewSession={handleNewSession}
-                    onUserAnswer={handleUserAnswer}
-                    historyPager={
-                      historyPagerMeta
-                        ? {
-                            loadedPages: historyPagerMeta.loadedPages,
-                            totalPages: historyPagerMeta.totalPages,
-                            loadingMore: historyLoadingMore,
-                            onLoadMore: handleLoadMoreHistory,
-                          }
-                        : null
-                    }
-                  />
+            {activeFeature ? (
+              <div className="flex-1 flex min-h-0 overflow-hidden">
+                <FeatureWorkspace onExit={() => closeFeature()} />
+              </div>
+            ) : (
+              <div className="flex-1 flex min-h-0 overflow-hidden">
+                {/* Chat Panel */}
+                <div className="flex-1 flex flex-col min-w-0 min-h-0">
+                  <div className="flex-1 min-h-0">
+                    <ChatPanel
+                      onSendMessage={handleSendMessage}
+                      onInterrupt={handleInterrupt}
+                      onSwitchMode={handleSwitchMode}
+                      isProcessing={isProcessing}
+                      onNewSession={handleNewSession}
+                      onUserAnswer={handleUserAnswer}
+                      historyPager={
+                        historyPagerMeta
+                          ? {
+                              loadedPages: historyPagerMeta.loadedPages,
+                              totalPages: historyPagerMeta.totalPages,
+                              loadingMore: historyLoadingMore,
+                              onLoadMore: handleLoadMoreHistory,
+                            }
+                          : null
+                      }
+                    />
+                  </div>
+
+                  {/* Status Bar - 只在非集群模式下显示 */}
+                  {mode !== 'agentteam' && (
+                    <StatusBar
+                      onPause={handlePause}
+                      onCancel={handleCancel}
+                      onResume={handleResume}
+                    />
+                  )}
                 </div>
 
-                {/* Status Bar - 只在非集群模式下显示 */}
-                {mode !== 'agentteam' && (
-                  <StatusBar
-                    onPause={handlePause}
-                    onCancel={handleCancel}
-                    onResume={handleResume}
-                  />
-                )}
+                {/* Tool Panel */}
+                <ToolPanel />
               </div>
-
-              {/* Tool Panel */}
-              <ToolPanel />
-            </div>
+            )}
           </>
         )}
         {activeNav === 'agents' && (

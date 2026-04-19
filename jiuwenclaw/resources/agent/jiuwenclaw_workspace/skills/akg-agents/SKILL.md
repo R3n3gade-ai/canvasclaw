@@ -1,6 +1,6 @@
 ---
 name: akg-agents
-description: 代理执行 AKG 算子任务。先检查固定仓库与分支；若 `~/.akg/check_env.md` 不存在则强制 `FULL_SETUP=true`；忽略所有 `akg_cli` 检查和使用；后端代码生成直接执行 `run_workflow.py --workflow kernelgen`。
+description: Execute AKG operator tasks through an agent workflow. Check the fixed repository and branch first; if `~/.akg/check_env.md` is missing, force `FULL_SETUP=true`; ignore all `akg_cli` checks and usage; execute backend code generation directly with `run_workflow.py --workflow kernelgen`.
 ---
 
 # 代理执行 AKG 算子任务

@@ -264,13 +264,19 @@
   animation: rise 0.45s var(--ease-out) backwards;
 }
 
-.chat-welcome__logo {
-  width: 64px;
-  height: 64px;
-  margin-bottom: 1.5rem;
-  border-radius: var(--radius-xl);
-  object-fit: contain;
-  filter: drop-shadow(0 4px 12px rgba(96, 165, 250, 0.2));
+.chat-welcome__mark {
+  margin-bottom: 1.25rem;
+  border: 1px solid color-mix(in oklab, var(--accent) 35%, var(--border));
+  border-radius: var(--radius-full);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--panel-strong) 90%, black), color-mix(in oklab, var(--card) 88%, black));
+  box-shadow: 0 0 0 1px rgba(34, 211, 197, 0.05), 0 18px 44px rgba(0, 0, 0, 0.28);
+  color: var(--text-strong);
+  font-family: var(--font-display);
+  font-size: 0.88rem;
+  font-weight: 800;
+  letter-spacing: 0.28em;
+  padding: 0.8rem 1.35rem;
+  text-transform: uppercase;
 }
 
 .chat-welcome__heading {
@@ -363,9 +369,9 @@
 }
 
 @media (min-width: 1440px) {
-  .chat-welcome__logo {
-    width: 72px;
-    height: 72px;
+  .chat-welcome__mark {
+    font-size: 0.96rem;
+    padding: 0.95rem 1.5rem;
   }
 
   .chat-welcome__heading {
@@ -382,9 +388,8 @@
 }
 
 @media (min-width: 1920px) {
-  .chat-welcome__logo {
-    width: 80px;
-    height: 80px;
+  .chat-welcome__mark {
+    font-size: 1.02rem;
   }
 
   .chat-welcome__heading {

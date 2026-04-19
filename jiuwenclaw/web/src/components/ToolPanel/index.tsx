@@ -12,7 +12,10 @@ import { HeartbeatMessageModal } from '../../features/HeartbeatMessageModal';
 import { TodoList } from '../TodoList';
 import { TeamArea } from '../TeamArea';
 import { TeamTaskEvents } from '../TeamTaskEvents';
+import { FEATURE_ORDER, useFeatureStore } from '../../stores/featureStore';
 import './ToolPanel.css';
+
+type ToolTabKey = 'tasks' | 'blank-1' | 'blank-2';
 
 export function ToolPanel() {
   const { t } = useTranslation();
@@ -31,6 +34,8 @@ export function ToolPanel() {
     teamMembers,
   } = useSessionStore();
   const [heartbeatModalOpen, setHeartbeatModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<ToolTabKey>('tasks');
+  const openFeature = useFeatureStore((state) => state.openFeature);
 
   useEffect(() => {
     if (!isConnected) {
@@ -112,96 +117,149 @@ export function ToolPanel() {
   }
   const compressionDisplay = `${afterK}K/${beforeK}K (${compressionRateDisplay}%)`;
 
+  const renderPlaceholder = () => (
+    <div className="toolpanel-placeholder">
+      <div className="toolpanel-placeholder__title">{t('toolPanel.blankTitle')}</div>
+      <p className="toolpanel-placeholder__body">{t('toolPanel.blankBody')}</p>
+    </div>
+  );
+
+  const renderFeaturesPanel = () => (
+    <div className="toolpanel-features">
+      <div className="toolpanel-feature-grid">
+        {FEATURE_ORDER.map((featureKey) => (
+          <button
+            key={featureKey}
+            type="button"
+            className="toolpanel-feature-card"
+            onClick={() => openFeature(featureKey)}
+          >
+            <div className="toolpanel-feature-card__icon" aria-hidden="true">
+              {t(`toolPanel.featuresPanel.items.${featureKey}.badge`)}
+            </div>
+            <h4 className="toolpanel-feature-card__title">
+              {t(`toolPanel.featuresPanel.items.${featureKey}.title`)}
+            </h4>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div
       data-testid="tool-panel"
-      className="bg-panel border-l border-border h-full overflow-hidden py-4 px-3 shrink-0"
-      style={{ width: 'var(--tool-panel-width)' }}
+      className="toolpanel-shell bg-panel border-l border-border h-full overflow-hidden py-4 px-3 shrink-0"
     >
       <div className="h-full bg-panel flex flex-col overflow-hidden">
-        {/* 任务事件日志 */}
-        {mode === 'agentteam' ? (
-          <div className="flex-1 overflow-y-auto mb-4">
-            <div className="bg-card rounded-lg border border-border overflow-hidden h-full">
-              <TeamTaskEvents events={teamTaskEvents} />
-            </div>
-          </div>
-        ) : (
-          /* Todo 列表 */
-          <div className="flex-1 overflow-y-auto mb-4">
-            <div className="bg-card rounded-lg border border-border overflow-hidden h-full">
-              <TodoList />
-            </div>
-          </div>
-        )}
-
-        {/* 团队区域 */}
-        {mode === 'agentteam' && (
-          <div className="flex-1 overflow-y-auto">
-            <div className="bg-card rounded-lg border border-border overflow-hidden h-full">
-              <TeamArea 
-                members={teamMembers}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* 状态显示 */}
-        <div className="toolpanel-status-card">
-          <h3 className="toolpanel-status-card__title">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="1" y="8" width="3" height="7" rx="0.5" fill="currentColor" opacity="0.5" />
-              <rect x="6" y="4" width="3" height="11" rx="0.5" fill="currentColor" opacity="0.7" />
-              <rect x="11" y="1" width="3" height="14" rx="0.5" fill="currentColor" />
-            </svg>
-            {t('toolPanel.status')}
-          </h3>
-          <div className="space-y-2">
-            <div className="toolpanel-status-card__row">
-              <span className="text-text-muted">{t('toolPanel.contextCompression')}</span>
-              <span className="mono text-text">{compressionDisplay}</span>
-            </div>
-            <div className="toolpanel-status-card__row">
-              <span className="text-text-muted">{t('toolPanel.memoryUsage')}</span>
-              <span className="mono text-text">{memoryDisplay}</span>
-            </div>
-
-            <div className={`toolpanel-status-card__heartbeat ${heartbeatClassName}`}>
-              <div className="toolpanel-status-card__heartbeat-row">
-                <span>{t('toolPanel.message')}</span>
-                {canOpenHeartbeatModal ? (
-                  <button
-                    type="button"
-                    className="toolpanel-status-card__heartbeat-link mono"
-                    onClick={() => setHeartbeatModalOpen(true)}
-                  >
-                    {heartbeatDisplayMessage}
-                  </button>
-                ) : (
-                  <span className="toolpanel-status-card__heartbeat-value mono">
-                    {heartbeatDisplayMessage}
-                  </span>
-                )}
-              </div>
-              <div className="toolpanel-status-card__heartbeat-row">
-                <span>{t('toolPanel.time')}</span>
-                <span className="toolpanel-status-card__heartbeat-value mono">
-                  {heartbeatDetail}
-                </span>
-              </div>
-            </div>
-          </div>
+        <div className="toolpanel-tabs">
+          <button
+            type="button"
+            className={`toolpanel-tab ${activeTab === 'tasks' ? 'is-active' : ''}`}
+            onClick={() => setActiveTab('tasks')}
+          >
+            {t('toolPanel.tabs.tasks')}
+          </button>
+          <button
+            type="button"
+            className={`toolpanel-tab ${activeTab === 'blank-1' ? 'is-active' : ''}`}
+            onClick={() => setActiveTab('blank-1')}
+          >
+            {t('toolPanel.tabs.connections')}
+          </button>
+          <button
+            type="button"
+            className={`toolpanel-tab ${activeTab === 'blank-2' ? 'is-active' : ''}`}
+            onClick={() => setActiveTab('blank-2')}
+          >
+            {t('toolPanel.tabs.features')}
+          </button>
         </div>
 
-        {/* 底部信息区：与左侧版本信息保持一致 */}
-        <div
-          className="shrink-0 pt-4 text-text-muted text-center"
-          style={{ fontSize: 'var(--font-size-xs)' }}
-        >
-          <div className="px-2.5">
-            <span>{t('toolPanel.poweredBy')}</span>
-          </div>
-        </div>
+        {activeTab === 'tasks' ? (
+          <>
+            {/* 任务事件日志 */}
+            {mode === 'agentteam' ? (
+              <div className="flex-1 overflow-y-auto mb-4">
+                <div className="bg-card rounded-lg border border-border overflow-hidden h-full">
+                  <TeamTaskEvents events={teamTaskEvents} />
+                </div>
+              </div>
+            ) : (
+              /* Todo 列表 */
+              <div className="flex-1 overflow-y-auto mb-4">
+                <div className="bg-card rounded-lg border border-border overflow-hidden h-full">
+                  <TodoList />
+                </div>
+              </div>
+            )}
+
+            {/* 团队区域 */}
+            {mode === 'agentteam' && (
+              <div className="flex-1 overflow-y-auto">
+                <div className="bg-card rounded-lg border border-border overflow-hidden h-full">
+                  <TeamArea 
+                    members={teamMembers}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* 状态显示 */}
+            <div className="toolpanel-status-card">
+              <h3 className="toolpanel-status-card__title">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="1" y="8" width="3" height="7" rx="0.5" fill="currentColor" opacity="0.5" />
+                  <rect x="6" y="4" width="3" height="11" rx="0.5" fill="currentColor" opacity="0.7" />
+                  <rect x="11" y="1" width="3" height="14" rx="0.5" fill="currentColor" />
+                </svg>
+                {t('toolPanel.status')}
+              </h3>
+              <div className="space-y-2">
+                <div className="toolpanel-status-card__row">
+                  <span className="text-text-muted">{t('toolPanel.contextCompression')}</span>
+                  <span className="mono text-text">{compressionDisplay}</span>
+                </div>
+                <div className="toolpanel-status-card__row">
+                  <span className="text-text-muted">{t('toolPanel.memoryUsage')}</span>
+                  <span className="mono text-text">{memoryDisplay}</span>
+                </div>
+
+                <div className={`toolpanel-status-card__heartbeat ${heartbeatClassName}`}>
+                  <div className="toolpanel-status-card__heartbeat-row">
+                    <span>{t('toolPanel.message')}</span>
+                    {canOpenHeartbeatModal ? (
+                      <button
+                        type="button"
+                        className="toolpanel-status-card__heartbeat-link mono"
+                        onClick={() => setHeartbeatModalOpen(true)}
+                      >
+                        {heartbeatDisplayMessage}
+                      </button>
+                    ) : (
+                      <span className="toolpanel-status-card__heartbeat-value mono">
+                        {heartbeatDisplayMessage}
+                      </span>
+                    )}
+                  </div>
+                  <div className="toolpanel-status-card__heartbeat-row">
+                    <span>{t('toolPanel.time')}</span>
+                    <span className="toolpanel-status-card__heartbeat-value mono">
+                      {heartbeatDetail}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 底部信息区：与左侧版本信息保持一致 */}
+            <div className="toolpanel-footer shrink-0 pt-4 text-text-muted text-center">
+              <div className="px-2.5">
+                <span>{t('toolPanel.poweredBy')}</span>
+              </div>
+            </div>
+          </>
+        ) : activeTab === 'blank-2' ? renderFeaturesPanel() : renderPlaceholder()}
       </div>
       <HeartbeatMessageModal
         open={heartbeatModalOpen}
