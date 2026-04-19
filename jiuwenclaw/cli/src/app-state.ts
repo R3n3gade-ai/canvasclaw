@@ -16,9 +16,10 @@ import {
   handleIncomingFrame,
   type AppEventDelegate,
   type PendingQuestion,
+  type PendingQuestionItem,
   type UserAnswer,
 } from "./core/event-handlers.js";
-import { isEventFrame, type EventFrame } from "./core/protocol.js";
+import { isEventFrame, type EventFrame, type FileAttachment } from "./core/protocol.js";
 import {
   StreamingState,
   type ContextCompressionStats,
@@ -44,7 +45,7 @@ import { type ConnectionStatus, WsClient } from "./core/ws-client.js";
 export interface AppSnapshot {
   connectionStatus: ConnectionStatus;
   sessionId: string;
-  mode: "plan" | "agent" | "team";
+  mode: "agent.plan" | "agent.fast" | "code.plan" | "code.normal" | "team";
   themeName: ThemeName;
   accentColor: AccentColorName;
   transcriptMode: "compact" | "detailed";
@@ -64,6 +65,8 @@ export interface AppSnapshot {
   teamMessageEvents: TeamMessageEvent[];
   evolutionStatus: "idle" | "running";
   contextCompression: ContextCompressionStats | null;
+  modelInfo: { provider: string; model: string; version: string };
+  sessionTitle: string;
 }
 
 export class CliPiAppState {
@@ -71,7 +74,9 @@ export class CliPiAppState {
   private entries: HistoryItem[] = [];
   private connectionStatus: ConnectionStatus = "idle";
   private sessionId: string;
-  private mode: "plan" | "agent" | "team" = "plan";
+  private sessionTitle: string = "";
+  private mode: "agent.plan" | "agent.fast" | "code.plan" | "code.normal" | "team" =
+    "agent.plan";
   private themeName: ThemeName = getCurrentThemeName();
   private accentColor: AccentColorName = getCurrentAccentColor();
   private transcriptMode: "compact" | "detailed" = "compact";
@@ -79,6 +84,13 @@ export class CliPiAppState {
   private collapsedToolGroupIds = new Set<string>();
   private streamingState: StreamingState = StreamingState.Idle;
   private pendingQuestion: PendingQuestion | null = null;
+  private localPendingQuestion:
+    | {
+        requestId: string;
+        resolve: (answers: UserAnswer[]) => void;
+        reject: (error: Error) => void;
+      }
+    | null = null;
   private lastError: string | null = null;
   private activeSubtasks = new Map<string, SubtaskState>();
   private todos: TodoItem[] = [];
@@ -99,6 +111,11 @@ export class CliPiAppState {
   private historyRequestToken = 0;
   private unlistenStatus: (() => void) | null = null;
   private unlistenFrames: (() => void) | null = null;
+  private modelInfo: { provider: string; model: string; version: string } = {
+    provider: "",
+    model: "",
+    version: "",
+  };
   private readonly eventDelegate: AppEventDelegate = {
     getConnectionStatus: () => this.connectionStatus,
     getSessionId: () => this.sessionId,
@@ -161,6 +178,12 @@ export class CliPiAppState {
     safeRestoreHistory: (sessionId) => {
       this.safeRestoreHistory(sessionId);
     },
+    setSessionTitle: (title) => {
+      this.setSessionTitle(title);
+    },
+    safeFetchSessionTitle: (sessionId) => {
+      this.safeFetchSessionTitle(sessionId);
+    },
   };
 
   constructor(
@@ -171,9 +194,12 @@ export class CliPiAppState {
   }
 
   start(): void {
-    this.unlistenStatus = this.wsClient.onStatusChange((status) => {
+    this.unlistenStatus = this.wsClient.onStatusChange(async (status) => {
       this.connectionStatus = status;
       this.emitChange();
+      if (status === "connected") {
+        await this.fetchModelInfo();
+      }
     });
 
     this.unlistenFrames = this.wsClient.onFrame((frame) => {
@@ -184,6 +210,10 @@ export class CliPiAppState {
   }
 
   stop(): void {
+    if (this.localPendingQuestion) {
+      this.localPendingQuestion.reject(new Error("app stopped while awaiting input"));
+      this.localPendingQuestion = null;
+    }
     if (this.historyFlushTimer) {
       clearTimeout(this.historyFlushTimer);
       this.historyFlushTimer = null;
@@ -197,6 +227,23 @@ export class CliPiAppState {
     this.unlistenFrames?.();
     this.unlistenFrames = null;
     this.wsClient.disconnect();
+  }
+
+  private async fetchModelInfo(): Promise<void> {
+    try {
+      const payload = await this.request("config.get", {});
+      if (payload && typeof payload === "object") {
+        const config = payload as Record<string, unknown>;
+        this.modelInfo = {
+          provider: String(config.model_provider ?? ""),
+          model: String(config.model ?? ""),
+          version: String(config.app_version ?? ""),
+        };
+        this.emitChange();
+      }
+    } catch {
+      // ignore error, use defaults
+    }
   }
 
   onChange(listener: () => void): () => void {
@@ -243,6 +290,8 @@ export class CliPiAppState {
       teamMessageEvents: [...this.teamMessageEvents],
       evolutionStatus: this.evolutionStatus,
       contextCompression: this.contextCompression ? { ...this.contextCompression } : null,
+      modelInfo: this.modelInfo,
+      sessionTitle: this.sessionTitle,
     };
   }
 
@@ -252,6 +301,7 @@ export class CliPiAppState {
     return {
       sendEventOnly: this.sendEventOnly,
       request: this.request,
+      askQuestions: this.askQuestions,
       sendMessage: this.sendMessage,
       sessionId: snapshot.sessionId,
       entries: snapshot.entries,
@@ -278,6 +328,9 @@ export class CliPiAppState {
         .length,
       collapseToolGroups: this.collapseToolGroups,
       expandToolGroups: this.expandToolGroups,
+      sessionTitle: snapshot.sessionTitle,
+      setSessionTitle: this.setSessionTitle,
+      enterConfigEditor: undefined, // AppScreen injects the real handler when executing slash commands.
     };
   }
 
@@ -287,26 +340,46 @@ export class CliPiAppState {
       type: "req",
       id,
       method,
-      params: { ...params, session_id: params.session_id ?? this.sessionId },
+      params: { ...params, session_id: (params.session_id as string | undefined) ?? this.sessionId },
     });
     return id;
   };
 
-  readonly request = async <T = Record<string, unknown>>(
+readonly request = async <T = Record<string, unknown>>(
     method: string,
     params: Record<string, unknown>,
+    timeoutMs?: number,
   ): Promise<T> => {
     const id = `tui_${Date.now().toString(16)}_${Math.random().toString(36).slice(2, 6)}`;
     const response = await this.wsClient.request(id, method, {
       ...params,
       session_id: params.session_id ?? this.sessionId,
-    });
+    }, timeoutMs ?? 30000);
     return response.payload as T;
   };
 
   readonly updateSession = (newId: string): void => {
     this.sessionId = newId;
     this.emitChange();
+  };
+
+  readonly setSessionTitle = (title: string): void => {
+    this.sessionTitle = title;
+    this.emitChange();
+  };
+
+  readonly safeFetchSessionTitle = (sessionId: string): void => {
+    void (async () => {
+      try {
+        const meta = await this.request<{ session_id: string; title: string }>(
+          "session.rename",
+          { session_id: sessionId },
+        );
+        this.setSessionTitle(meta.title || "");
+      } catch {
+        // 标题获取失败不影响核心功能
+      }
+    })();
   };
 
   readonly addItem = (item: HistoryItem): void => {
@@ -316,6 +389,10 @@ export class CliPiAppState {
   };
 
   readonly clearEntries = (): void => {
+    if (this.localPendingQuestion) {
+      this.localPendingQuestion.reject(new Error("input flow was interrupted"));
+      this.localPendingQuestion = null;
+    }
     this.entries = [];
     this.pendingQuestion = null;
     this.lastError = null;
@@ -333,7 +410,9 @@ export class CliPiAppState {
     this.emitChange();
   };
 
-  readonly setMode = (mode: "plan" | "agent" | "team"): void => {
+  readonly setMode = (
+    mode: "agent.plan" | "agent.fast" | "code.plan" | "code.normal" | "team",
+  ): void => {
     if (this.mode !== mode) {
       this.mode = mode;
       this.emitChange();
@@ -410,11 +489,17 @@ export class CliPiAppState {
 
   readonly sendMessage = (
     content: string,
-    modeOverride?: "plan" | "agent" | "team",
+    attachments?: FileAttachment[],
+    modeOverride?: "agent.plan" | "agent.fast" | "code.plan" | "code.normal" | "team",
   ): string | null => {
     if (this.connectionStatus !== "connected") return null;
     const mode = modeOverride ?? this.mode;
-    const requestId = this.sendEventOnly("chat.send", { content, query: content, mode });
+    const requestId = this.sendEventOnly("chat.send", {
+      content,
+      query: content,
+      mode,
+      ...(attachments?.length ? { attachments } : {}),
+    });
     this.lastError = null;
     this.entries = [
       ...this.entries,
@@ -431,13 +516,14 @@ export class CliPiAppState {
     return requestId;
   };
 
-  supplement(content: string): string | null {
+  supplement(content: string, attachments?: FileAttachment[]): string | null {
     if (this.connectionStatus !== "connected") return null;
     const trimmed = content.trim();
     if (!trimmed) return null;
     const requestId = this.sendEventOnly("chat.interrupt", {
       intent: "supplement",
       new_input: trimmed,
+      ...(attachments?.length ? { attachments } : {}),
     });
     this.lastError = null;
     this.entries = [
@@ -465,6 +551,18 @@ export class CliPiAppState {
 
   submitQuestionAnswers(answers: UserAnswer[]): void {
     if (!this.pendingQuestion) return;
+    if (
+      this.localPendingQuestion &&
+      this.pendingQuestion.requestId === this.localPendingQuestion.requestId
+    ) {
+      const resolver = this.localPendingQuestion;
+      this.localPendingQuestion = null;
+      this.pendingQuestion = null;
+      this.streamingState = StreamingState.Idle;
+      resolver.resolve(answers);
+      this.emitChange();
+      return;
+    }
     if (this.pendingQuestion.source === "permission_interrupt") {
       this.sendEventOnly("chat.send", {
         query: "",
@@ -485,6 +583,31 @@ export class CliPiAppState {
   answerQuestion(answer: string): void {
     this.submitQuestionAnswers([{ selected_options: [answer], custom_input: answer }]);
   }
+
+  readonly askQuestions = (
+    questions: PendingQuestionItem[],
+    source = "local_command",
+  ): Promise<UserAnswer[]> => {
+    if (questions.length === 0) {
+      return Promise.resolve([]);
+    }
+    if (this.pendingQuestion || this.localPendingQuestion) {
+      return Promise.reject(new Error("another question is already active"));
+    }
+
+    const requestId = `local_${Date.now().toString(16)}_${Math.random().toString(36).slice(2, 6)}`;
+    this.pendingQuestion = {
+      requestId,
+      source,
+      questions,
+    };
+    this.streamingState = StreamingState.Idle;
+    this.emitChange();
+
+    return new Promise<UserAnswer[]>((resolve, reject) => {
+      this.localPendingQuestion = { requestId, resolve, reject };
+    });
+  };
 
   readonly restoreHistory = async (targetSessionId: string): Promise<void> => {
     this.historyRequestToken += 1;

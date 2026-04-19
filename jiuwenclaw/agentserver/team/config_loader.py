@@ -1,225 +1,238 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 
-"""Team 配置加载器.
-
-从 YAML 配置文件加载 Team 配置，支持环境变量替换.
-"""
+"""Team configuration loader."""
 
 from __future__ import annotations
 
 import logging
-import os
-import re
-from dataclasses import dataclass, field
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-import yaml
+from openjiuwen.agent_teams.paths import get_agent_teams_home
 
-from jiuwenclaw.utils import get_agent_team_data_dir, get_config_file
+from jiuwenclaw.config import get_config
+from jiuwenclaw.utils import get_agent_skills_dir
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class LeaderConfig:
-    """Leader 配置."""
-    member_name: str = "team_leader"
-    name: str = "TeamLeader"
-    persona: str = "天才项目管理专家"
-    domain: str = "project_management"
+_DEFAULT_MAX_ITERATIONS = 200
+_DEFAULT_COMPLETION_TIMEOUT = 600.0
+_DEFAULT_AGENT_WORKSPACE = {"stable_base": True}
 
 
-@dataclass
-class TeamMemberConfig:
-    """团队成员配置."""
-    member_name: str
-    name: str
-    role_type: str = "teammate"
-    persona: str = ""
-    domain: str = ""
+def resolve_team_sqlite_db_path(config_base: dict[str, Any] | None = None) -> Path | None:
+    """Resolve the team sqlite database path using openjiuwen semantics."""
+    if config_base is None:
+        config_base = get_config()
+
+    team_raw = config_base.get("team", {})
+    if not isinstance(team_raw, dict):
+        return None
+
+    storage_raw = team_raw.get("storage", {})
+    if not isinstance(storage_raw, dict):
+        return None
+
+    storage_type = str(storage_raw.get("type", "")).strip().lower()
+    if storage_type and storage_type != "sqlite":
+        return None
+
+    storage_params = storage_raw.get("params", {})
+    if not isinstance(storage_params, dict):
+        storage_params = {}
+
+    conn_str = str(storage_params.get("connection_string", "")).strip()
+    if not conn_str:
+        return get_agent_teams_home() / "team.db"
+
+    db_path = Path(conn_str).expanduser()
+    if db_path.is_absolute():
+        return db_path
+
+    return get_agent_teams_home() / conn_str
 
 
-@dataclass
-class TransportConfig:
-    """传输层配置."""
-    type: str = "team_runtime"
-    params: dict[str, Any] = field(default_factory=dict)
+def _build_default_model_dict(config_base: dict[str, Any]) -> dict[str, Any]:
+    model_config = config_base.get("models", {}).get("default", {})
+    model_client_config = model_config.get("model_client_config", {})
+    model_request_config = dict(model_config.get("model_config_obj", {}))
+
+    model_name = model_client_config.get("model_name", "")
+    if model_name and "model" not in model_request_config:
+        model_request_config["model"] = model_name
+
+    logger.info(
+        "[TeamConfigLoader] model config loaded: model_name=%s, provider=%s",
+        model_name,
+        model_client_config.get("client_provider", "unknown"),
+    )
+    return {
+        "model_client_config": model_client_config,
+        "model_request_config": model_request_config,
+    }
 
 
-@dataclass
-class StorageConfig:
-    """存储层配置."""
-    type: str = "sqlite"
-    params: dict[str, Any] = field(default_factory=dict)
+def _resolve_storage_config(storage_raw: dict[str, Any]) -> dict[str, Any]:
+    storage_dict = deepcopy(storage_raw)
+    storage_params = storage_dict.get("params", {})
+    if "connection_string" not in storage_params:
+        return storage_dict
+
+    db_path = resolve_team_sqlite_db_path({"team": {"storage": storage_dict}})
+    if db_path is None:
+        return storage_dict
+
+    storage_params["connection_string"] = str(db_path)
+
+    db_dir = db_path.parent
+    if not db_dir.exists():
+        db_dir.mkdir(parents=True, exist_ok=True)
+        logger.info("[TeamConfigLoader] Created database directory: %s", db_dir)
+
+    return storage_dict
 
 
-@dataclass
-class TeamConfig:
-    """Team 完整配置."""
-    team_name: str = "jiuwen_team"
-    lifecycle: str = "persistent"
-    teammate_mode: str = "build_mode"
-    spawn_mode: str = "coroutine"
-    leader: LeaderConfig = field(default_factory=LeaderConfig)
-    predefined_members: list[TeamMemberConfig] = field(default_factory=list)
-    transport: TransportConfig = field(default_factory=TransportConfig)
-    storage: StorageConfig = field(default_factory=StorageConfig)
-    metadata: dict[str, Any] = field(default_factory=dict)
+def _build_agent_defaults() -> tuple[dict[str, Any], int, float]:
+    return (
+        deepcopy(_DEFAULT_AGENT_WORKSPACE),
+        _DEFAULT_MAX_ITERATIONS,
+        _DEFAULT_COMPLETION_TIMEOUT,
+    )
 
 
-class TeamConfigLoader:
-    """Team 配置加载器."""
+def _build_agent_spec_dict(
+    agent_config: dict[str, Any],
+    *,
+    default_model: dict[str, Any],
+    default_workspace: dict[str, Any],
+    max_iterations: int,
+    completion_timeout: float,
+) -> dict[str, Any]:
+    merged = deepcopy(agent_config)
+    merged.setdefault("model", deepcopy(default_model))
+    merged.setdefault("workspace", deepcopy(default_workspace))
+    merged.setdefault("max_iterations", max_iterations)
+    merged.setdefault("completion_timeout", completion_timeout)
+    return merged
 
-    _ENV_VAR_RE = re.compile(r"\$\{(\w+)(?::-([^}]*))?\}")
 
-    def __init__(self, config_path: Path | str | None = None):
-        """初始化加载器.
+def _list_global_skill_names() -> list[str]:
+    skills_dir = get_agent_skills_dir()
+    if not skills_dir.exists() or not skills_dir.is_dir():
+        return []
 
-        Args:
-            config_path: 配置文件路径，默认使用 get_config_file() 获取
-        """
-        self.config_path = Path(config_path) if config_path else get_config_file()
+    return sorted(
+        path.name
+        for path in skills_dir.iterdir()
+        if path.is_dir() and (path / "SKILL.md").is_file()
+    )
 
-    def _expand_env_vars(self, value: Any) -> Any:
-        """递归替换环境变量.
 
-        支持格式:
-        - ${VAR}: 使用环境变量值，未设置则使用空字符串
-        - ${VAR:-default}: 使用环境变量值，未设置则使用默认值
-        """
-        if isinstance(value, str):
-            def replace_env(match: re.Match) -> str:
-                var_name = match.group(1)
-                default = match.group(2)
-                current = os.getenv(var_name)
-                if default is not None:
-                    return current if current else default
-                return current if current is not None else ""
-            return self._ENV_VAR_RE.sub(replace_env, value)
-        elif isinstance(value, dict):
-            return {k: self._expand_env_vars(v) for k, v in value.items()}
-        elif isinstance(value, list):
-            return [self._expand_env_vars(item) for item in value]
-        return value
+def _build_agents_config(team_raw: dict[str, Any], config_base: dict[str, Any]) -> dict[str, Any]:
+    default_model = _build_default_model_dict(config_base)
+    default_workspace, max_iterations, completion_timeout = _build_agent_defaults()
+    all_skill_names = _list_global_skill_names()
 
-    def load(self) -> TeamConfig:
-        """加载并解析配置.
+    agents_raw = team_raw.get("agents", {})
+    if not isinstance(agents_raw, dict) or not agents_raw:
+        logger.warning("[TeamConfigLoader] agents config is empty, using default leader/teammate")
+        agents_raw = {"leader": {}, "teammate": {}}
 
-        Returns:
-            TeamConfig: 解析后的配置对象
+    agents: dict[str, Any] = {}
+    for agent_key, raw_agent_config in agents_raw.items():
+        agent_config = dict(raw_agent_config) if isinstance(raw_agent_config, dict) else {}
+        if "skills" not in agent_config:
+            agent_config["skills"] = deepcopy(all_skill_names)
+        agent_spec = _build_agent_spec_dict(
+            agent_config,
+            default_model=default_model,
+            default_workspace=default_workspace,
+            max_iterations=max_iterations,
+            completion_timeout=completion_timeout,
+        )
+        agents[agent_key] = agent_spec
 
-        Raises:
-            FileNotFoundError: 配置文件不存在
-            yaml.YAMLError: YAML 解析错误
-        """
-        if not self.config_path.exists():
-            logger.warning(
-                "[TeamConfigLoader] 配置文件不存在: %s，使用默认配置",
-                self.config_path
-            )
-            return TeamConfig()
-
-        with open(self.config_path, "r", encoding="utf-8") as f:
-            raw = yaml.safe_load(f)
-
-        if not raw:
-            logger.warning("[TeamConfigLoader] 配置文件为空，使用默认配置")
-            return TeamConfig()
-
-        # 展开环境变量
-        raw = self._expand_env_vars(raw)
-        
-        # 获取 team 配置部分
-        team_raw = raw.get("team", {})
-        
-        if not team_raw:
-            logger.warning("[TeamConfigLoader] 配置文件中没有 team 配置，使用默认配置")
-            return TeamConfig()
-
-        # 解析 Leader 配置
-        leader_raw = team_raw.get("leader", {})
-        leader = LeaderConfig(
-            member_name=leader_raw.get("member_name", "team_leader"),
-            name=leader_raw.get("name", "TeamLeader"),
-            persona=leader_raw.get("persona", "天才项目管理专家"),
-            domain=leader_raw.get("domain", "project_management"),
+    if "leader" not in agents:
+        agents["leader"] = _build_agent_spec_dict(
+            {},
+            default_model=default_model,
+            default_workspace=default_workspace,
+            max_iterations=max_iterations,
+            completion_timeout=completion_timeout,
         )
 
-        # 解析预定义成员
-        predefined_members = []
-        for member_raw in team_raw.get("predefined_members", []):
-            predefined_members.append(TeamMemberConfig(
-                member_name=member_raw["member_name"],
-                name=member_raw["name"],
-                role_type=member_raw.get("role_type", "teammate"),
-                persona=member_raw.get("persona", ""),
-                domain=member_raw.get("domain", ""),
-            ))
-
-        # 解析传输层配置
-        transport_raw = team_raw.get("transport", {})
-        transport = TransportConfig(
-            type=transport_raw.get("type", "team_runtime"),
-            params=transport_raw.get("params", {}),
-        )
-
-        # 解析存储层配置
-        storage_raw = team_raw.get("storage", {})
-        storage_params = storage_raw.get("params", {})
-
-        # 处理存储路径
-        if "connection_string" in storage_params:
-            conn_str = storage_params["connection_string"]
-            
-            # 如果是相对路径，则使用统一的 team_data 目录
-            db_path = Path(conn_str)
-            if not db_path.is_absolute():
-                team_data_dir = get_agent_team_data_dir()
-                db_path = team_data_dir / conn_str
-                storage_params["connection_string"] = str(db_path)
-            
-            # 确保数据库目录存在
-            db_dir = db_path.parent
-            if not db_dir.exists():
-                db_dir.mkdir(parents=True, exist_ok=True)
-                logger.info("[TeamConfigLoader] Created database directory: %s", db_dir)
-
-        storage = StorageConfig(
-            type=storage_raw.get("type", "sqlite"),
-            params=storage_params,
-        )
-
-        config = TeamConfig(
-            team_name=team_raw.get("team_name", "jiuwen_team"),
-            lifecycle=team_raw.get("lifecycle", "persistent"),
-            teammate_mode=team_raw.get("teammate_mode", "build_mode"),
-            spawn_mode=team_raw.get("spawn_mode", "coroutine"),
-            leader=leader,
-            predefined_members=predefined_members,
-            transport=transport,
-            storage=storage,
-            metadata=team_raw.get("metadata", {}),
-        )
-
-        logger.info(
-            "[TeamConfigLoader] 配置加载成功: team_name=%s, lifecycle=%s, members=%d",
-            config.team_name,
-            config.lifecycle,
-            len(config.predefined_members),
-        )
-
-        return config
+    return agents
 
 
-def load_team_config(config_path: Path | str | None = None) -> TeamConfig:
-    """便捷函数：加载 Team 配置.
+def _build_leader_spec(team_raw: dict[str, Any]) -> dict[str, Any]:
+    leader_raw = team_raw.get("leader", {})
+    return {
+        "member_name": leader_raw.get("member_name", "team_leader"),
+        "display_name": leader_raw.get("display_name", "Team Leader"),
+        "persona": leader_raw.get("persona", "天才项目管理专家"),
+    }
 
-    Args:
-        config_path: 配置文件路径，默认使用 resources/team_config.yaml
 
-    Returns:
-        TeamConfig: 解析后的配置对象
-    """
-    loader = TeamConfigLoader(config_path)
-    return loader.load()
+def _build_predefined_members(team_raw: dict[str, Any]) -> list[dict[str, Any]]:
+    predefined_members_raw = team_raw.get("predefined_members", [])
+    if not isinstance(predefined_members_raw, list):
+        logger.warning("[TeamConfigLoader] predefined_members must be a list, ignored")
+        return []
+
+    predefined_members: list[dict[str, Any]] = []
+    for item in predefined_members_raw:
+        if not isinstance(item, dict):
+            continue
+
+        member_name = str(item.get("member_name", "")).strip()
+        if not member_name:
+            logger.warning("[TeamConfigLoader] skipped predefined member without member_name: %s", item)
+            continue
+
+        member_spec = deepcopy(item)
+        member_spec["member_name"] = member_name
+        member_spec.setdefault("display_name", member_name)
+        member_spec["persona"] = member_spec.get("persona") or ""
+
+        predefined_members.append(member_spec)
+
+    return predefined_members
+
+
+def load_team_spec_dict(session_id: str) -> dict[str, Any]:
+    """Load team config and build a TeamAgentSpec-compatible dict."""
+    config_base = get_config()
+    team_raw = config_base.get("team", {})
+
+    if not team_raw:
+        logger.warning("[TeamConfigLoader] no team config found, using defaults")
+        team_raw = {}
+
+    agents = _build_agents_config(team_raw, config_base)
+    spec_dict = deepcopy(team_raw)
+    spec_dict["team_name"] = f"{team_raw.get('team_name', 'team')}_{session_id}"
+    spec_dict["lifecycle"] = team_raw.get("lifecycle", "persistent")
+    spec_dict["teammate_mode"] = team_raw.get("teammate_mode", "build_mode")
+    spec_dict["spawn_mode"] = team_raw.get("spawn_mode", "inprocess")
+    spec_dict["leader"] = _build_leader_spec(team_raw)
+    spec_dict["agents"] = agents
+
+    predefined_members = _build_predefined_members(team_raw)
+    if predefined_members:
+        spec_dict["predefined_members"] = predefined_members
+    elif "predefined_members" in spec_dict:
+        spec_dict.pop("predefined_members", None)
+
+    storage_raw = team_raw.get("storage", {})
+    if storage_raw:
+        spec_dict["storage"] = _resolve_storage_config(storage_raw)
+
+    logger.info(
+        "[TeamConfigLoader] team config loaded: team_name=%s, lifecycle=%s, agents=%s, predefined_members=%s",
+        spec_dict["team_name"],
+        spec_dict["lifecycle"],
+        list(agents.keys()),
+        [item["member_name"] for item in predefined_members],
+    )
+    return spec_dict

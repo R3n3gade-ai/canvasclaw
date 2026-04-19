@@ -1,5 +1,8 @@
 import type { HistoryItem } from "../types.js";
 import type { AccentColorName, ThemeName } from "../../ui/theme.js";
+import type { PendingQuestionItem, UserAnswer } from "../event-handlers.js";
+import type { FileAttachment } from "../protocol.js";
+import type { ConfigItemSchema } from "./builtins/config.js";
 
 export type ConnectionStatus = "idle" | "connecting" | "connected" | "reconnecting" | "auth_failed";
 
@@ -19,8 +22,14 @@ export interface CommandContext {
   request: <T = Record<string, unknown>>(
     method: string,
     params: Record<string, unknown>,
+    timeoutMs?: number,
   ) => Promise<T>;
-  sendMessage: (content: string, mode?: "plan" | "agent" | "team") => string | null;
+  askQuestions: (questions: PendingQuestionItem[], source?: string) => Promise<UserAnswer[]>;
+  sendMessage: (
+    content: string,
+    attachments?: FileAttachment[],
+    mode?: "agent.plan" | "agent.fast" | "code.plan" | "code.normal" | "team",
+  ) => string | null;
   sessionId: string;
   entries: HistoryItem[];
   themeName: ThemeName;
@@ -32,8 +41,8 @@ export interface CommandContext {
   exitApp: () => void;
   isProcessing: boolean;
   connectionStatus: ConnectionStatus;
-  mode: "plan" | "agent" | "team";
-  setMode: (mode: "plan" | "agent" | "team") => void;
+  mode: "agent.plan" | "agent.fast" | "code.plan" | "code.normal" | "team";
+  setMode: (mode: "agent.plan" | "agent.fast" | "code.plan" | "code.normal" | "team") => void;
   setThemeName: (theme: ThemeName) => void;
   setAccentColor: (color: AccentColorName) => void;
   transcriptMode: "compact" | "detailed";
@@ -43,6 +52,12 @@ export interface CommandContext {
   collapsedToolGroupCount: number;
   collapseToolGroups: (scope: "last" | "all") => void;
   expandToolGroups: (scope: "last" | "all") => void;
+  sessionTitle: string;
+  setSessionTitle: (title: string) => void;
+  enterConfigEditor?: (
+    focusKey?: string,
+    configPayload?: Record<string, unknown> & { schema?: ConfigItemSchema[] },
+  ) => void;
 }
 
 export interface SlashCommand {

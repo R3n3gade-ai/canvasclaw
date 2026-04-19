@@ -64,7 +64,9 @@ def patch_wire_encoder(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_handle_command_add_dir_returns_path_and_remember(server, fake_ws, monkeypatch):
+async def test_handle_command_add_dir_returns_path_and_remember(
+    server, fake_ws, monkeypatch
+):
     persist_stub = {
         "ok": True,
         "normalized": "/tmp/demo",
@@ -134,12 +136,8 @@ async def test_handle_command_diff_returns_summary_payload(server, fake_ws):
         {
             "response_id": "req-diff",
             "payload": {
-                "summary": "Workspace diff preview",
-                "items": [
-                    {"label": "files_changed", "value": "3"},
-                    {"label": "insertions", "value": "24"},
-                    {"label": "deletions", "value": "7"},
-                ],
+                "type": "list",
+                "turns": [],
             },
             "ok": True,
         }
@@ -147,12 +145,16 @@ async def test_handle_command_diff_returns_summary_payload(server, fake_ws):
 
 
 @pytest.mark.asyncio
-async def test_handle_command_model_returns_current_and_requested_model(server, fake_ws):
+async def test_handle_command_model_no_action_shows_current(
+    server, fake_ws, monkeypatch
+):
+    """No action → returns current model from os.environ and available list."""
+    monkeypatch.setenv("MODEL_NAME", "test-model")
     request = AgentRequest(
         request_id="req-model",
         channel_id="tui",
         req_method=ReqMethod.COMMAND_MODEL,
-        params={"model": "planner-model"},
+        params={},
     )
 
     await server.handle_command_model_for_test(fake_ws, request, asyncio.Lock())
@@ -161,11 +163,30 @@ async def test_handle_command_model_returns_current_and_requested_model(server, 
         {
             "response_id": "req-model",
             "payload": {
-                "current": "planner-model",
-                "requested": "planner-model",
-                "applied": True,
-                "available": ["default-model", "planner-model", "coder-model"],
+                "current": "test-model",
+                "available": ["default-model"],
             },
+            "ok": True,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_handle_command_model_add_model(server, fake_ws):
+    """action=add_model → returns model_added confirmation."""
+    request = AgentRequest(
+        request_id="req-add",
+        channel_id="cli",
+        req_method=ReqMethod.COMMAND_MODEL,
+        params={"action": "add_model", "target": "my-model", "config": {}},
+    )
+
+    await server.handle_command_model_for_test(fake_ws, request, asyncio.Lock())
+
+    assert fake_ws.sent == [
+        {
+            "response_id": "req-add",
+            "payload": {"type": "model_added", "name": "my-model"},
             "ok": True,
         }
     ]

@@ -7,15 +7,23 @@ import { createCompactCommand } from "./builtins/compact.js";
 import { createConfigCommand } from "./builtins/config.js";
 import { createCopyCommand } from "./builtins/copy.js";
 import { createDiffCommand } from "./builtins/diff.js";
+import {
+  createEvolveCommand,
+  createEvolveListCommand,
+  createEvolveSimplifyCommand,
+  createSolidifyCommand,
+} from "./builtins/evolve.js";
 import { createExitCommand } from "./builtins/exit.js";
 import { createHelpCommand } from "./builtins/help.js";
 import { createHotkeyCommand } from "./builtins/hotkey.js";
+import { createInitCommand } from "./builtins/init.js";
 import { createModelCommand } from "./builtins/model.js";
+import { createModeCommand } from "./builtins/mode.js";
 import { createPlanCommand } from "./builtins/plan.js";
 import { createResumeCommand } from "./builtins/resume.js";
+import { createRenameCommand } from "./builtins/rename.js";
 import { createSessionCommand } from "./builtins/session.js";
 import { createSkillsCommand } from "./builtins/skills.js";
-import { createTeamCommand } from "./builtins/team.js";
 import { createThemeCommand } from "./builtins/theme.js";
 
 export function createBuiltinCommands(): SlashCommand[] {
@@ -23,18 +31,24 @@ export function createBuiltinCommands(): SlashCommand[] {
     createHelpCommand(() => commands),
     createAddDirCommand(),
     createClearCommand(),
+    createInitCommand(),
     createColorCommand(),
     createCompactCommand(),
     createConfigCommand(),
     createCopyCommand(),
     createDiffCommand(),
+    createEvolveCommand(),
+    createEvolveListCommand(),
+    createEvolveSimplifyCommand(),
+    createSolidifyCommand(),
     createExitCommand(),
     createModelCommand(),
+    createModeCommand(),
     createPlanCommand(),
     createResumeCommand(),
+    createRenameCommand(),
     createSessionCommand(),
     createSkillsCommand(),
-    createTeamCommand(),
     createThemeCommand(),
     createHotkeyCommand(),
   ];

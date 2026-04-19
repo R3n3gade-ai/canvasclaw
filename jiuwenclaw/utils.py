@@ -551,6 +551,65 @@ def _migrate_legacy_workspace(
     logger.info(f"Migration completed: {new_workspace}")
 
 
+def cleanup_team_files(workspace_dir: Path) -> None:
+    """清理 Team 旧版本遗留的文件和目录.
+
+    Legacy cleanup:
+    - Old: {workspace_dir}/workspace/ (旧版本 team workspace)
+    - Old: {workspace_dir}/agent/team_data/ (旧版本 team 数据库目录)
+    - Old: {workspace_dir}/team.db (旧版本 team 数据库文件)
+    - Old: {workspace_dir}/team.db-wal (旧版本 team WAL 文件)
+    - Old: {workspace_dir}/team.db-shm (旧版本 team SHM 文件)
+    - Old: {workspace_dir}/agent/team.db (旧版本 team 数据库文件)
+    - Old: {workspace_dir}/agent/team.db-wal (旧版本 team WAL 文件)
+    - Old: {workspace_dir}/agent/team.db-shm (旧版本 team SHM 文件)
+
+    Args:
+        workspace_dir: JiuWenClaw 用户工作空间根目录 (~/.jiuwenclaw)
+    """
+    agent_dir = workspace_dir / "agent"
+
+    # 清理 {workspace_dir}/workspace/ (旧版本 team workspace)
+    legacy_workspace = workspace_dir / "workspace"
+    if legacy_workspace.exists():
+        try:
+            shutil.rmtree(legacy_workspace)
+            logger.info(f"[Cleanup] Removed legacy workspace directory: {legacy_workspace}")
+        except OSError as e:
+            logger.warning(f"[Cleanup] Failed to remove legacy workspace directory: {e}")
+
+    # 清理 {workspace_dir}/agent/team_data/ (旧版本 team 数据库目录)
+    legacy_team_data = agent_dir / "team_data"
+    if legacy_team_data.exists():
+        try:
+            shutil.rmtree(legacy_team_data)
+            logger.info(f"[Cleanup] Removed legacy team_data directory: {legacy_team_data}")
+        except OSError as e:
+            logger.warning(f"[Cleanup] Failed to remove legacy team_data directory: {e}")
+
+    # 清理 {workspace_dir}/team.db* (旧版本 team 数据库文件)
+    legacy_team_db_root = workspace_dir / "team.db"
+    for suffix in ["", "-wal", "-shm"]:
+        db_file = legacy_team_db_root.with_suffix(".db" + suffix)
+        if db_file.exists():
+            try:
+                db_file.unlink()
+                logger.info(f"[Cleanup] Removed legacy team database file: {db_file}")
+            except OSError as e:
+                logger.warning(f"[Cleanup] Failed to remove legacy team database file: {e}")
+
+    # 清理 {workspace_dir}/agent/team.db* (旧版本 team 数据库文件)
+    legacy_team_db_agent = agent_dir / "team.db"
+    for suffix in ["", "-wal", "-shm"]:
+        db_file = legacy_team_db_agent.with_suffix(".db" + suffix)
+        if db_file.exists():
+            try:
+                db_file.unlink()
+                logger.info(f"[Cleanup] Removed legacy team database file: {db_file}")
+            except OSError as e:
+                logger.warning(f"[Cleanup] Failed to remove legacy team database file: {e}")
+
+
 def prepare_workspace(
     overwrite: bool = True,
     preferred_language: Optional[str] = None,
@@ -742,17 +801,49 @@ def init_user_workspace(overwrite: bool = True) -> Path | Literal["cancelled"]:
     不再由 JiuwenClaw 复制到用户工作区。
 
     交互式 init 会先询问语言；首次启动 app 时非交互 prepare_workspace 则沿用模板 config 中的语言。
+
+    Args:
+        overwrite: True 时强制清理整个工作空间目录后初始化；
+                   False 时保留原有数据，执行迁移合并逻辑。
     """
     workspace_dir = get_user_workspace_dir()
     if workspace_dir.exists():
-        # Warn user about data loss and ask for confirmation
-        print("[jiuwenclaw-init] WARNING: This will delete all historical configuration and memory information.")
-        print("[jiuwenclaw-init] This action cannot be undone.")
-        confirmation = input("[jiuwenclaw-init] Do you want to confirm reinitialization? (yes/no): ").strip().lower()
+        if overwrite:
+            # Force mode: explain both modes and ask for confirmation
+            print(
+                "[jiuwenclaw-init] With -f/--force flag, "
+                "entire ~/.jiuwenclaw will be deleted for clean initialization."
+            )
+            print("[jiuwenclaw-init] WARNING: This will delete all historical configuration and memory information.")
+            print("[jiuwenclaw-init] This action cannot be undone.")
+            confirmation = input(
+                "[jiuwenclaw-init] Do you want to confirm reinitialization? (yes/no): "
+            ).strip().lower()
 
-        if confirmation not in ("yes", "y"):
-            print("[jiuwenclaw-init] Initialization cancelled. Exiting.")
-            return "cancelled"
+            if confirmation not in ("yes", "y"):
+                print("[jiuwenclaw-init] Initialization cancelled. Exiting.")
+                return "cancelled"
+
+            # Delete entire workspace directory for clean initialization
+            try:
+                shutil.rmtree(workspace_dir)
+                logger.info(f"Removed workspace directory: {workspace_dir}")
+            except OSError as e:
+                logger.error(f"Failed to remove workspace directory: {e}")
+                print(f"[jiuwenclaw-init] ERROR: Failed to remove workspace: {e}")
+                return "cancelled"
+        else:
+            # Merge mode: inform about preservation
+            print(
+                "[jiuwenclaw-init] Without -f/--force flag, "
+                "existing files will be preserved and merged with template."
+            )
+            print("[jiuwenclaw-init] This action cannot be undone.")
+            confirmation = input("[jiuwenclaw-init] Do you want to continue? (yes/no): ").strip().lower()
+
+            if confirmation not in ("yes", "y"):
+                print("[jiuwenclaw-init] Initialization cancelled. Exiting.")
+                return "cancelled"
 
     lang = prompt_preferred_language()
     if lang is None:
@@ -947,15 +1038,6 @@ def get_builtin_skills_dir() -> Path:
 
 def get_agent_sessions_dir() -> Path:
     return get_agent_root_dir() / "sessions"
-
-
-def get_agent_team_data_dir() -> Path:
-    """Get the agent team data directory path.
-
-    Returns:
-        Path to team data directory: ~/.jiuwenclaw/agent/team_data
-    """
-    return get_agent_root_dir() / "team_data"
 
 
 def get_checkpoint_dir() -> Path:

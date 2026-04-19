@@ -8,6 +8,7 @@ import logging
 import asyncio
 import json
 import math
+import os
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -32,6 +33,7 @@ from jiuwenclaw.agentserver.extensions import get_rail_manager
 from jiuwenclaw.agentserver.permissions.patterns import persist_cli_trusted_directory
 from jiuwenclaw.schema.hooks_context import AgentServerChatHookContext
 from jiuwenclaw.agentserver.agent_manager import AgentManager, ACP_DEFAULT_CAPABILITIES
+from jiuwenclaw.agentserver.permissions.config_rpc import get_permissions_config_req_methods
 
 
 logger = logging.getLogger(__name__)
@@ -302,6 +304,12 @@ class AgentWebSocketServer:
             if request.req_method == ReqMethod.SESSION_LIST:
                 await self._handle_session_list(ws, request, send_lock)
                 return
+            if request.req_method == ReqMethod.SESSION_RENAME:
+                await self._handle_session_rename(ws, request, send_lock)
+                return
+            if request.req_method in get_permissions_config_req_methods():
+                await self._handle_permissions_config(ws, request, send_lock)
+                return
             if request.req_method == ReqMethod.HISTORY_GET:
                 if request.is_stream:
                     await self._handle_history_get_stream(ws, request, send_lock)
@@ -422,9 +430,22 @@ class AgentWebSocketServer:
             await self._handle_acp_tool_response(ws, request, send_lock)
             return
 
-        agent = await self._agent_manager.get_agent(channel_id=channel_id)
+        mode = request.params.get("mode", "agent.plan").split(".")[0]
+        agent = await self._agent_manager.get_agent(channel_id=channel_id, mode=mode)
         if agent is None:
             raise ValueError("Failed to get agent")
+
+        # code 模式：在真实 session 上执行 switch_mode，确保 state 持久化
+        if mode == "code":
+            from openjiuwen.core.single_agent import create_agent_session
+            sub_mode = request.params.get("mode", "agent.plan").split(".")[1]
+            session = create_agent_session(session_id=request.session_id, card=agent.get_instance().card)
+            await session.pre_run(inputs=None)  # 从 checkpointer 加载历史 state
+            agent.get_instance().switch_mode(session=session, mode=sub_mode)
+            # 持久化 switch_mode 修改后的 state
+            state = agent.get_instance().load_state(session)
+            session.update_state({"deep_agent_state": state.to_session_dict()})
+            await session.post_run()  # 写入 checkpointer
 
         resp = await agent.process_message(request)
 
@@ -438,13 +459,23 @@ class AgentWebSocketServer:
 
     async def _handle_stream(self, ws: Any, request: AgentRequest, send_lock: asyncio.Lock) -> None:
         """流式处理：调用 process_message_stream，逐条发送 E2AResponse 线 JSON。"""
-        from jiuwenclaw.schema.message import ReqMethod
-
         channel_id = request.channel_id or "default"
-
-        agent = await self._agent_manager.get_agent(channel_id=channel_id)
+        mode = request.params.get("mode", "agent.plan").split(".")[0]
+        agent = await self._agent_manager.get_agent(channel_id=channel_id, mode=mode)
         if agent is None:
             raise ValueError("Failed to get agent")
+
+        # code 模式：在真实 session 上执行 switch_mode，确保 state 持久化
+        if mode == "code":
+            from openjiuwen.core.single_agent import create_agent_session
+            sub_mode = request.params.get("mode", "agent.plan").split(".")[1]
+            session = create_agent_session(session_id=request.session_id, card=agent.get_instance().card)
+            await session.pre_run(inputs=None)  # 从 checkpointer 加载历史 state
+            agent.get_instance().switch_mode(session=session, mode=sub_mode)
+            # 持久化 switch_mode 修改后的 state
+            state = agent.get_instance().load_state(session)
+            session.update_state({"deep_agent_state": state.to_session_dict()})
+            await session.post_run()  # 写入 checkpointer
 
         chunk_count = 0
         # 心跳控制：当有真实 chunk 发送时重置，空闲时发送心跳
@@ -549,6 +580,46 @@ class AgentWebSocketServer:
             payload={"sessions": sessions},
             metadata=request.metadata,
         )
+        wire = encode_agent_response_for_wire(resp, response_id=request.request_id)
+        async with send_lock:
+            await ws.send(json.dumps(wire, ensure_ascii=False))
+
+    async def _handle_session_rename(self, ws: Any, request: AgentRequest, send_lock: asyncio.Lock) -> None:
+        """处理 session.rename：与 CLI Gateway 本地回退共用 apply_session_rename。"""
+        from jiuwenclaw.agentserver.session_rename import apply_session_rename
+
+        sid = request.session_id or ""
+        ch = (request.channel_id or "").strip() or "tui"
+        ok, payload, err, code = apply_session_rename(
+            request.params,
+            sid,
+            init_channel_id=ch,
+        )
+        if ok:
+            resp = AgentResponse(
+                request_id=request.request_id,
+                channel_id=request.channel_id,
+                ok=True,
+                payload=payload or {},
+                metadata=request.metadata,
+            )
+        else:
+            resp = AgentResponse(
+                request_id=request.request_id,
+                channel_id=request.channel_id,
+                ok=False,
+                payload={"error": err or "session.rename failed", "code": code or ""},
+                metadata=request.metadata,
+            )
+        wire = encode_agent_response_for_wire(resp, response_id=request.request_id)
+        async with send_lock:
+            await ws.send(json.dumps(wire, ensure_ascii=False))
+
+    async def _handle_permissions_config(self, ws: Any, request: AgentRequest, send_lock: asyncio.Lock) -> None:
+        """处理 permissions.* E2A 请求（与 Web ``register_method`` 同名 method）。"""
+        from jiuwenclaw.agentserver.permissions.config_rpc import dispatch_permissions_config_request
+
+        resp = dispatch_permissions_config_request(request)
         wire = encode_agent_response_for_wire(resp, response_id=request.request_id)
         async with send_lock:
             await ws.send(json.dumps(wire, ensure_ascii=False))
@@ -721,21 +792,29 @@ class AgentWebSocketServer:
             await ws.send(json.dumps(wire, ensure_ascii=False))
 
     async def _handle_command_diff(self, ws: Any, request: AgentRequest, send_lock: asyncio.Lock) -> None:
+        from jiuwenclaw.agentserver.diff_service import get_diff_service
+
         try:
+            session_id = request.session_id or "default"
+            diff_service = get_diff_service()
+            turns = diff_service.get_turn_diffs(session_id)
+
+            logger.info(
+                "[AgentWebSocketServer] command.diff response: session_id=%s turns=%s",
+                session_id,
+                turns,
+            )
+
             resp = AgentResponse(
                 request_id=request.request_id,
                 channel_id=request.channel_id,
                 ok=True,
                 payload={
-                    "summary": "Workspace diff preview",
-                    "items": [
-                        {"label": "files_changed", "value": "3"},
-                        {"label": "insertions", "value": "24"},
-                        {"label": "deletions", "value": "7"},
-                    ],
+                    "type": "list",
+                    "turns": turns,
                 },
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.exception("[AgentWebSocketServer] command.diff failed: %s", e)
             resp = AgentResponse(
                 request_id=request.request_id,
@@ -750,19 +829,73 @@ class AgentWebSocketServer:
     async def _handle_command_model(self, ws: Any, request: AgentRequest, send_lock: asyncio.Lock) -> None:
         try:
             params = request.params or {}
-            requested = params.get("model")
-            current = requested if isinstance(requested, str) and requested.strip() else "default-model"
-            resp = AgentResponse(
-                request_id=request.request_id,
-                channel_id=request.channel_id,
-                ok=True,
-                payload={
-                    "current": current,
-                    "requested": requested if isinstance(requested, str) and requested.strip() else None,
-                    "applied": bool(isinstance(requested, str) and requested.strip()),
-                    "available": ["default-model", "planner-model", "coder-model"],
-                },
-            )
+            action = params.get("action")
+
+            if action == "add_model":
+                target = str(params.get("target", "")).strip()
+                logger.info("[command.model] add_model: target=%s", target)
+                resp = AgentResponse(
+                    request_id=request.request_id,
+                    channel_id=request.channel_id,
+                    ok=True,
+                    payload={"type": "model_added", "name": target},
+                )
+
+            elif action == "switch_model":
+                target = str(params.get("model", "")).strip()
+                env_updates = params.get("env_updates", {})
+                logger.info(
+                    "[command.model] switch_model: target=%s, env_updates=%s",
+                    target,
+                    {k: (v if k != "API_KEY" else "***") for k, v in env_updates.items()},
+                )
+
+                if not env_updates:
+                    resp = AgentResponse(
+                        request_id=request.request_id,
+                        channel_id=request.channel_id,
+                        ok=False,
+                        payload={"error": "No env_updates provided"},
+                    )
+                else:
+                    for k, v in env_updates.items():
+                        os.environ[k] = v
+                    logger.info("[command.model] os.environ 已更新, MODEL_NAME=%s", os.getenv("MODEL_NAME", "unknown"))
+
+                    try:
+                        from jiuwenclaw.agentserver.memory.config import clear_config_cache
+                        clear_config_cache()
+                        logger.info("[command.model] config cache 已清除")
+                    except Exception as e:
+                        logger.debug("[command.model] clear_config_cache skipped: %s", e)
+
+                    try:
+                        await self._agent_manager.reload_agents_config(None, env_updates)
+                        logger.info("[command.model] agent config 已重载")
+                    except Exception as e:
+                        logger.debug("[command.model] reload_agents_config skipped: %s", e)
+
+                    resp = AgentResponse(
+                        request_id=request.request_id,
+                        channel_id=request.channel_id,
+                        ok=True,
+                        payload={
+                            "current": os.getenv("MODEL_NAME", "unknown"),
+                            "requested": target,
+                            "type": "switched",
+                            "applied": True,
+                        },
+                    )
+                    logger.info("[command.model] 切换完成: current=%s", os.getenv("MODEL_NAME", "unknown"))
+
+            else:
+                resp = AgentResponse(
+                    request_id=request.request_id,
+                    channel_id=request.channel_id,
+                    ok=True,
+                    payload={"current": os.getenv("MODEL_NAME", "unknown"), "available": ["default-model"]},
+                )
+
         except Exception as e:  # noqa: BLE001
             logger.exception("[AgentWebSocketServer] command.model failed: %s", e)
             resp = AgentResponse(
@@ -1258,11 +1391,21 @@ class AgentWebSocketServer:
                 payload={"accepted": True},
             )
         else:
+            logger.info(
+                "[AgentServer] ignore unknown/late acp tool response: jsonrpc_id=%s request_id=%s",
+                jsonrpc_id,
+                request.request_id,
+            )
             resp = AgentResponse(
                 request_id=request.request_id,
                 channel_id=request.channel_id,
-                ok=False,
-                payload={"error": f"unknown acp tool response id: {jsonrpc_id}"},
+                ok=True,
+                payload={
+                    "accepted": False,
+                    "ignored": True,
+                    "reason": "unknown_or_late_response",
+                    "jsonrpc_id": jsonrpc_id,
+                },
             )
 
         wire = encode_agent_response_for_wire(resp, response_id=request.request_id)

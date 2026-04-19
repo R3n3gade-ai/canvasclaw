@@ -160,7 +160,7 @@ class JiuWenClaw:
             logger.info("[JiuWenClaw] Initialized adapter: sdk=%s", self._sdk_name)
         return self._adapter
 
-    async def create_instance(self, config: dict[str, Any] | None = None, *, mode: str = "claw") -> None:
+    async def create_instance(self, config: dict[str, Any] | None = None, *, mode: str = "agent") -> None:
         """初始化 Agent 实例.
 
         Args:
@@ -708,6 +708,11 @@ class JiuWenClaw:
             payload={"is_complete": True},
             is_complete=True,
         )
+
+    # ---------- 实例获取 ----------
+
+    def get_instance(self):
+        return self._adapter._instance
 
     # ---------- 资源清理 ----------
 

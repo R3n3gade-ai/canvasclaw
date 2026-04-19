@@ -31,6 +31,7 @@ class ReqMethod(Enum):
     SESSION_LIST = "session.list"
     SESSION_CREATE = "session.create"
     SESSION_DELETE = "session.delete"
+    SESSION_RENAME = "session.rename"
 
     PATH_GET = "path.get"
     PATH_SET = "path.set"
@@ -77,6 +78,18 @@ class ReqMethod(Enum):
     HEARTBEAT_GET_CONF = "heartbeat.get_conf"
     HEARTBEAT_SET_CONF = "heartbeat.set_conf"
 
+    # 安全防护 permissions（与 Web ``register_method`` 同名，经 E2A → AgentServer 处理；owner_scopes 仅走 Web 直连）
+    PERMISSIONS_TOOLS_GET = "permissions.tools.get"
+    PERMISSIONS_TOOLS_SET = "permissions.tools.set"
+    PERMISSIONS_TOOLS_UPDATE = "permissions.tools.update"
+    PERMISSIONS_TOOLS_DELETE = "permissions.tools.delete"
+    PERMISSIONS_RULES_GET = "permissions.rules.get"
+    PERMISSIONS_RULES_CREATE = "permissions.rules.create"
+    PERMISSIONS_RULES_UPDATE = "permissions.rules.update"
+    PERMISSIONS_RULES_DELETE = "permissions.rules.delete"
+    PERMISSIONS_APPROVAL_OVERRIDES_GET = "permissions.approval_overrides.get"
+    PERMISSIONS_APPROVAL_OVERRIDES_DELETE = "permissions.approval_overrides.delete"
+
     CHANNEL_FEISHU_GET_CONF = "channel.feishu.get_conf"
     CHANNEL_FEISHU_SET_CONF = "channel.feishu.set_conf"
 
@@ -110,6 +123,7 @@ class EventType(Enum):
     CHAT_MEDIA = "chat.media"
     CHAT_FILE = "chat.file"
     CHAT_TOOL_CALL = "chat.tool_call"
+    CHAT_TOOL_UPDATE = "chat.tool_update"
     CHAT_TOOL_RESULT = "chat.tool_result"
     CONTEXT_COMPRESSED = "context.compressed"
     TODO_UPDATED = "todo.updated"
@@ -128,9 +142,31 @@ class EventType(Enum):
 
 
 class Mode(Enum):
-    AGENT = "agent"
-    PLAN = "plan"
+    AGENT_PLAN = "agent.plan"
+    AGENT_FAST = "agent.fast"
+    CODE_PLAN = "code.plan"
+    CODE_NORMAL = "code.normal"
     TEAM = "team"
+
+    @classmethod
+    def from_raw(cls, raw_mode: Any, default: "Mode | None" = None) -> "Mode":
+        """解析 mode，仅接受新值(agent.plan/agent.fast/code.plan/code.normal/team)。"""
+        fallback = default or cls.AGENT_PLAN
+        if isinstance(raw_mode, Mode):
+            return raw_mode
+        if not isinstance(raw_mode, str):
+            return fallback
+        normalized = raw_mode.strip().lower()
+        if not normalized:
+            return fallback
+        try:
+            return cls(normalized)
+        except ValueError:
+            return fallback
+
+    def to_runtime_mode(self) -> str:
+        """输出新 mode 值本身。"""
+        return self.value
 
 
 @dataclass
@@ -150,7 +186,7 @@ class Message:
     payload: dict | None = None
     req_method: ReqMethod | None = None
     event_type: EventType | None = None
-    mode: Mode = Mode.PLAN
+    mode: Mode = Mode.AGENT_PLAN
     is_stream: bool = False
     stream_seq: int | None = None
     stream_id: str | None = None

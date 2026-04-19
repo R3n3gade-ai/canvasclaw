@@ -48,7 +48,7 @@ export interface AppEventDelegate {
   getConnectionStatus(): ConnectionStatus;
   getSessionId(): string;
   setSessionId(sessionId: string): void;
-  setMode(mode: "plan" | "agent" | "team"): void;
+  setMode(mode: "agent.plan" | "agent.fast" | "code.plan" | "code.normal" | "team"): void;
   getEntries(): HistoryItem[];
   setEntries(entries: HistoryItem[]): void;
   setStreamingState(state: StreamingState): void;
@@ -61,6 +61,8 @@ export interface AppEventDelegate {
   appendTeamMessageEvent(event: TeamMessageEvent): void;
   setEvolutionStatus(status: "idle" | "running"): void;
   setContextCompression(stats: ContextCompressionStats | null): void;
+  setSessionTitle(title: string): void;
+  safeFetchSessionTitle(sessionId: string): void;
   addToolCallPayload(
     payload: Record<string, unknown>,
     sessionId: string,
@@ -140,6 +142,7 @@ function handleConnectionAck(delegate: AppEventDelegate, frame: EventFrame): boo
   const sessionId = delegate.getSessionId();
   if (sessionId && delegate.getConnectionStatus() === "connected") {
     delegate.safeRestoreHistory(sessionId);
+    delegate.safeFetchSessionTitle(sessionId);
   }
   return true;
 }
@@ -666,8 +669,17 @@ export function handleIncomingFrame(delegate: AppEventDelegate, frame: EventFram
 
     case "session.updated": {
       const mode = typeof payload.mode === "string" ? payload.mode : "";
-      if (mode === "plan" || mode === "agent" || mode === "team") {
-        delegate.setMode(mode as "plan" | "agent" | "team");
+      if (
+        mode === "agent.plan" ||
+        mode === "agent.fast" ||
+        mode === "code.plan" ||
+        mode === "code.normal" ||
+        mode === "team"
+      ) {
+        delegate.setMode(mode as "agent.plan" | "agent.fast" | "code.plan" | "code.normal" | "team");
+      }
+      if (typeof payload.title === "string") {
+        delegate.setSessionTitle(payload.title);
       }
       return true;
     }

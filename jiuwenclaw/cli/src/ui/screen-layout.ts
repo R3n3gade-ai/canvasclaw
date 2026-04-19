@@ -13,6 +13,8 @@ export interface ScreenLayoutOptions {
   questionLines: string[];
   editorLines: string[];
   composerPreviewLines: string[];
+  pendingInput?: string;
+  pendingInputBaseline?: number;
   showFullThinking: boolean;
   showToolDetails: boolean;
   showShortcutHelp: boolean;
@@ -94,7 +96,13 @@ function buildStatusLines(
   const left: string[] = [];
   const connectionLabel = connectionStatusLabel(snapshot.connectionStatus);
   if (connectionLabel) left.push(connectionLabel);
-  if (snapshot.mode !== "plan") left.push(`mode:${snapshot.mode}`);
+  if (snapshot.sessionTitle) {
+    const displayTitle = snapshot.sessionTitle.length > 30
+      ? snapshot.sessionTitle.slice(0, 30) + "..."
+      : snapshot.sessionTitle;
+    left.push(displayTitle);
+  }
+  if (snapshot.mode !== "agent.plan") left.push(`mode:${snapshot.mode}`);
   if (snapshot.transcriptFoldMode !== "none") left.push(`fold:${snapshot.transcriptFoldMode}`);
   const teamWorking =
     snapshot.mode === "team" &&
@@ -161,6 +169,8 @@ export function buildAppScreenLines(snapshot: AppSnapshot, options: ScreenLayout
     options.showFullThinking,
     options.showToolDetails,
     options.animationPhase,
+    options.pendingInput,
+    options.pendingInputBaseline,
   );
   const todoLines = options.showTodos ? renderTodoList(snapshot.todos, options.width) : [];
   const teamStatusLines =

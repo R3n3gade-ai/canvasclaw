@@ -6,11 +6,14 @@ from __future__ import annotations
 
 import logging
 import asyncio
+import os
+import re
 import secrets
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from enum import Enum
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict
 from jiuwenclaw.channel.base import ChannelType
 from jiuwenclaw.e2a.constants import E2A_WIRE_INTERNAL_METADATA_KEYS
@@ -26,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 _ACP_CHANNEL_ID = "acp"
 _ACP_ORIGINAL_SESSION_ID_KEY = "acp_original_session_id"
+_DEFAULT_INLINE_FILE_SIZE_LIMIT = 128 * 1024
 _KNOWN_JIUWENCLAW_SESSION_PREFIXES = (
     "sess_",
     "acp_",
@@ -43,15 +47,17 @@ _KNOWN_JIUWENCLAW_SESSION_PREFIXES = (
 
 
 class ChannelMode(str, Enum):
-    PLAN = "plan"
-    AGENT = "agent"
+    AGENT_PLAN = "agent.plan"
+    AGENT_FAST = "agent.fast"
+    CODE_PLAN = "code.plan"
+    CODE_NORMAL = "code.normal"
     TEAM = "team"
 
 
 @dataclass
 class ChannelControlState:
     session_id: str | None = None
-    mode: ChannelMode = ChannelMode.PLAN
+    mode: ChannelMode = ChannelMode.AGENT_PLAN
 
 
 @dataclass
@@ -118,9 +124,9 @@ class MessageHandler(ABC):
         self._stream_tasks: dict[str, asyncio.Task] = {}  # request_id -> task
         self._stream_sessions: dict[str, str | None] = {}  # request_id -> session_id
         self._stream_metadata: dict[str, dict[str, Any] | None] = {}  # request_id -> request metadata
-        self._stream_modes: dict[str, str] = {}  # request_id -> mode (plan/agent)
+        self._stream_modes: dict[str, str] = {}  # request_id -> mode
         self._pending_evolution_approval: dict[str, str] = {}  # session_id -> approval_request_id
-        self._queued_supplement_input: dict[str, str] = {}  # session_id -> queued_new_input
+        self._queued_supplement_input: dict[str, dict[str, Any]] = {}  # session_id -> queued supplement payload
         self._session_evolution_in_progress: set[str] = set()
         self._acp_session_aliases: dict[str, str] = {}  # external_session_id -> internal_session_id
         self._acp_session_alias_lock = asyncio.Lock()
@@ -203,8 +209,15 @@ class MessageHandler(ABC):
         # 若未在 config 中指定默认 session_id，为该 channel 生成一个带时间戳的新 session_id
         if not sid:
             sid = self._generate_channel_session_id(channel_id)
-        mode_raw = str(ch_cfg.get("default_mode") or "plan").strip().lower()
-        mode = ChannelMode.AGENT if mode_raw == "agent" else ChannelMode.PLAN
+        mode_raw = str(ch_cfg.get("default_mode") or "agent.plan").strip().lower()
+        mode_map = {
+            "agent.plan": ChannelMode.AGENT_PLAN,
+            "agent.fast": ChannelMode.AGENT_FAST,
+            "code.plan": ChannelMode.CODE_PLAN,
+            "code.normal": ChannelMode.CODE_NORMAL,
+            "team": ChannelMode.TEAM,
+        }
+        mode = mode_map.get(mode_raw, ChannelMode.AGENT_PLAN)
         return ChannelControlState(session_id=sid, mode=mode)
 
     def _get_channel_state_key(self, channel_id: str, conversation_id: str | None) -> str:
@@ -414,12 +427,7 @@ class MessageHandler(ABC):
 
     @staticmethod
     def _build_mode_change_notice_text(mode_label: str) -> str:
-        base = f"[收到 CLI 指令], mode 已变更为 {mode_label}"
-        if mode_label == ChannelMode.AGENT.value:
-            return (
-                f"{base}。为统一命名体系，后续将逐步以 fast 作为该执行模式的标准名称。"
-            )
-        return base
+        return f"[收到 CLI 指令], mode 已变更为 {mode_label}"
 
     def _handle_channel_control(self, msg: "Message") -> bool:
         r"""处理 \new_session / \mode / \skills 指令.
@@ -495,7 +503,15 @@ class MessageHandler(ABC):
 
         if parsed.action is ParsedControlAction.MODE_OK:
             mode_str = parsed.mode_subcommand or ""
-            if mode_str not in ("plan", "agent", "fast", "team"):
+            if mode_str not in (
+                "agent",
+                "code",
+                "team",
+                "agent.plan",
+                "agent.fast",
+                "code.plan",
+                "code.normal",
+            ):
                 asyncio.create_task(
                     self._send_channel_notice(
                         user_infos,
@@ -507,12 +523,20 @@ class MessageHandler(ABC):
                 return True
             old_mode = state.mode
             old_sid = state.session_id
-            if mode_str in ("agent", "fast"):
-                state.mode = ChannelMode.AGENT
+            if mode_str == "agent":
+                state.mode = ChannelMode.AGENT_PLAN
+            elif mode_str == "code":
+                state.mode = ChannelMode.CODE_NORMAL
             elif mode_str == "team":
                 state.mode = ChannelMode.TEAM
-            else:
-                state.mode = ChannelMode.PLAN
+            elif mode_str == "agent.plan":
+                state.mode = ChannelMode.AGENT_PLAN
+            elif mode_str == "agent.fast":
+                state.mode = ChannelMode.AGENT_FAST
+            elif mode_str == "code.plan":
+                state.mode = ChannelMode.CODE_PLAN
+            elif mode_str == "code.normal":
+                state.mode = ChannelMode.CODE_NORMAL
             new_label = state.mode.value
             if old_mode != state.mode:
                 asyncio.create_task(
@@ -537,7 +561,58 @@ class MessageHandler(ABC):
                     )
                 )
             return True
-        if parsed.action is ParsedControlAction.MODE_BAD:
+        if parsed.action is ParsedControlAction.SWITCH_OK:
+            switch_str = parsed.switch_subcommand or ""
+            target_mode: ChannelMode | None = None
+            if switch_str == "plan":
+                if state.mode in (ChannelMode.AGENT_PLAN, ChannelMode.AGENT_FAST):
+                    target_mode = ChannelMode.AGENT_PLAN
+                elif state.mode in (ChannelMode.CODE_PLAN, ChannelMode.CODE_NORMAL):
+                    target_mode = ChannelMode.CODE_PLAN
+            elif switch_str == "fast":
+                if state.mode in (ChannelMode.AGENT_PLAN, ChannelMode.AGENT_FAST):
+                    target_mode = ChannelMode.AGENT_FAST
+            elif switch_str == "normal":
+                if state.mode in (ChannelMode.CODE_PLAN, ChannelMode.CODE_NORMAL):
+                    target_mode = ChannelMode.CODE_NORMAL
+            if target_mode is None:
+                asyncio.create_task(
+                    self._send_channel_notice(
+                        user_infos,
+                        ch,
+                        msg.session_id,
+                        "非法指令",
+                    )
+                )
+                return True
+            old_mode = state.mode
+            old_sid = state.session_id
+            state.mode = target_mode
+            new_label = state.mode.value
+            if old_mode != state.mode:
+                asyncio.create_task(
+                    self._mode_change_cancel_and_notice(
+                        ModeChangeCancelParams(
+                            user_infos=user_infos,
+                            channel_id=ch,
+                            reply_session_id=msg.session_id,
+                            old_sid=old_sid,
+                            new_mode_label=new_label,
+                        ),
+                        msg,
+                    )
+                )
+            else:
+                asyncio.create_task(
+                    self._send_channel_notice(
+                        user_infos,
+                        ch,
+                        msg.session_id,
+                        self._build_mode_change_notice_text(new_label),
+                    )
+                )
+            return True
+        if parsed.action in (ParsedControlAction.MODE_BAD, ParsedControlAction.SWITCH_BAD):
             asyncio.create_task(
                 self._send_channel_notice(
                     user_infos,
@@ -792,6 +867,165 @@ class MessageHandler(ABC):
             if internal == sid:
                 return external
         return sid
+
+    @staticmethod
+    def _resolve_at_file_references(
+        content: str,
+        cwd: str | None = None,
+        max_file_size: int | None = _DEFAULT_INLINE_FILE_SIZE_LIMIT,
+    ) -> str:
+        """Parse ``@path`` references in *content* and inline the file text.
+
+        Supported forms:
+        - ``@relative/path`` / ``@/absolute/path`` — resolved against *cwd*
+        - ``@"path with spaces"`` — quoted paths
+        - ``@path#L10-20`` — line-range suffix (ignored for now, whole file read)
+
+        Returns content with ``@path`` replaced by a ``<file-content>`` block
+        containing the actual text.  If a file cannot be read the original
+        ``@path`` is kept unchanged.
+        """
+        if not content:
+            return content
+
+        working_dir = cwd or os.getcwd()
+
+        # Match @path or @"quoted path", optionally followed by #L... line range
+        pattern = re.compile(
+            r'(?P<prefix>(?:^|(?<=\s)))@(?:"(?P<quoted>[^"]+)"|(?P<plain>[^\s#]+))(?:#[^#\s]*)?'
+        )
+
+        def _replacer(m: re.Match[str]) -> str:
+            raw = m.group("quoted") or m.group("plain") or ""
+            if not raw:
+                return m.group(0)
+
+            # Resolve path
+            if raw.startswith("~/"):
+                home = os.path.expanduser("~")
+                resolved = os.path.join(home, raw[2:])
+            elif MessageHandler._is_absolute_reference_path(raw):
+                resolved = raw
+            else:
+                resolved = os.path.join(working_dir, raw)
+
+            try:
+                path = Path(resolved)
+                if not path.is_file():
+                    return m.group(0)
+                size = path.stat().st_size
+                truncated = False
+                if max_file_size is None:
+                    text = path.read_text(encoding="utf-8", errors="replace")
+                else:
+                    with path.open("r", encoding="utf-8", errors="replace") as handle:
+                        text = handle.read(max_file_size + 1)
+                    if size > max_file_size or len(text) > max_file_size:
+                        truncated = True
+                    if len(text) > max_file_size:
+                        text = text[:max_file_size]
+                    if truncated:
+                        suffix = f"\n... (truncated, original_size={size} bytes)"
+                        text = f"{text}{suffix}"
+                return (
+                    f'\n<file-content path="{raw}">\n{text}\n</file-content>\n'
+                )
+            except (OSError, UnicodeDecodeError):
+                return m.group(0)
+
+        return pattern.sub(_replacer, content)
+
+    @staticmethod
+    def _is_absolute_reference_path(raw: str) -> bool:
+        return raw.startswith("/") or (len(raw) >= 3 and raw[1] == ":" and raw[2] == "\\")
+
+    @staticmethod
+    def _resolve_reference_path(raw: str, cwd: str | None = None) -> str:
+        working_dir = cwd or os.getcwd()
+        if raw.startswith("~/"):
+            return os.path.join(os.path.expanduser("~"), raw[2:])
+        if MessageHandler._is_absolute_reference_path(raw):
+            return raw
+        return os.path.join(working_dir, raw)
+
+    @classmethod
+    def _normalize_structured_attachments(
+        cls,
+        attachments: Any,
+        cwd: str | None = None,
+    ) -> list[dict[str, Any]]:
+        if not isinstance(attachments, list):
+            return []
+
+        normalized: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for item in attachments:
+            if not isinstance(item, dict):
+                continue
+            raw_path = str(item.get("path") or "").strip()
+            if not raw_path:
+                continue
+            resolved_path = cls._resolve_reference_path(raw_path, cwd)
+            if resolved_path in seen:
+                continue
+            seen.add(resolved_path)
+            normalized.append(
+                {
+                    "path": resolved_path,
+                    "type": str(item.get("type") or "file").strip() or "file",
+                    "filename": str(item.get("filename") or Path(resolved_path).name).strip(),
+                }
+            )
+        return normalized
+
+    @classmethod
+    def _strip_attached_mentions(
+        cls,
+        content: str,
+        attachments: list[dict[str, Any]],
+        cwd: str | None = None,
+    ) -> str:
+        if not content or not attachments:
+            return content
+
+        attached_paths = {
+            cls._resolve_reference_path(str(item.get("path") or ""), cwd)
+            for item in attachments
+            if str(item.get("path") or "").strip()
+        }
+        if not attached_paths:
+            return content
+
+        pattern = re.compile(
+            r'(?P<prefix>(?:^|(?<=\s)))@(?:"(?P<quoted>[^"]+)"|(?P<plain>[^\s#]+))(?:#[^#\s]*)?'
+        )
+
+        def _replacer(match: re.Match[str]) -> str:
+            raw = match.group("quoted") or match.group("plain") or ""
+            if not raw:
+                return match.group(0)
+            resolved = cls._resolve_reference_path(raw, cwd)
+            if resolved not in attached_paths:
+                return match.group(0)
+            return f"{match.group('prefix')}{raw}"
+
+        return pattern.sub(_replacer, content)
+
+    @classmethod
+    def _resolve_structured_attachments(
+        cls,
+        content: str,
+        attachments: Any,
+        cwd: str | None = None,
+    ) -> str:
+        normalized = cls._normalize_structured_attachments(attachments, cwd)
+        if not normalized:
+            return content
+
+        prefix = " ".join(f'@"{item["path"]}"' for item in normalized)
+        cleaned_content = cls._strip_attached_mentions(content, normalized, cwd)
+        merged_content = f"{prefix} {cleaned_content}".strip()
+        return cls._resolve_at_file_references(merged_content, cwd=cwd)
 
     @staticmethod
     def message_to_e2a(msg: "Message") -> "E2AEnvelope":
@@ -1148,14 +1382,26 @@ class MessageHandler(ABC):
 
     @staticmethod
     def _is_evolution_approval_request_id(request_id: Any) -> bool:
-        return isinstance(request_id, str) and request_id.startswith("skill_evolve_approve_")
+        # Support skill evolution (skill_evolve_*) and new skill creation (skill_create*)
+        return isinstance(request_id, str) and (
+            request_id.startswith("skill_evolve_") or
+            request_id.startswith("skill_create_")
+        )
 
-    def _queue_supplement_input(self, session_id: str | None, new_input: str) -> None:
+    def _queue_supplement_input(
+        self,
+        session_id: str | None,
+        new_input: str,
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> None:
         if not session_id:
             return
-        self._queued_supplement_input[session_id] = new_input
+        payload: dict[str, Any] = {"new_input": new_input}
+        if attachments:
+            payload["attachments"] = attachments
+        self._queued_supplement_input[session_id] = payload
 
-    def _pop_queued_supplement_input(self, session_id: str | None) -> str | None:
+    def _pop_queued_supplement_input(self, session_id: str | None) -> dict[str, Any] | None:
         if not session_id:
             return None
         return self._queued_supplement_input.pop(session_id, None)
@@ -1190,20 +1436,27 @@ class MessageHandler(ABC):
         self._pop_queued_supplement_input(session_id)
 
     @staticmethod
-    def _build_queued_chat_send_message(msg: "Message", new_input: str) -> "Message":
+    def _build_queued_chat_send_message(
+        msg: "Message",
+        new_input: str,
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> "Message":
         from jiuwenclaw.schema.message import Message, ReqMethod
 
         new_req_id = f"req_{int(time.time() * 1000):x}_{msg.id}"
+        params: dict[str, Any] = {
+            "query": new_input,
+            "session_id": msg.session_id,
+            "is_supplement": True,
+        }
+        if attachments:
+            params["attachments"] = attachments
         return Message(
             id=new_req_id,
             type="req",
             channel_id=msg.channel_id,
             session_id=msg.session_id,
-            params={
-                "query": new_input,
-                "session_id": msg.session_id,
-                "is_supplement": True,
-            },
+            params=params,
             timestamp=time.time(),
             ok=True,
             req_method=ReqMethod.CHAT_SEND,
@@ -1271,9 +1524,15 @@ class MessageHandler(ABC):
                     if self._is_evolution_approval_request_id(answer_request_id):
                         self._clear_pending_evolution_approval(msg.session_id)
                         self._clear_session_evolution_in_progress(msg.session_id)
-                        queued_input = self._pop_queued_supplement_input(msg.session_id)
-                        if isinstance(queued_input, str) and queued_input.strip():
-                            queued_msg = self._build_queued_chat_send_message(msg, queued_input.strip())
+                        queued_payload = self._pop_queued_supplement_input(msg.session_id)
+                        queued_input = str((queued_payload or {}).get("new_input") or "").strip()
+                        queued_attachments = (queued_payload or {}).get("attachments")
+                        if queued_input:
+                            queued_msg = self._build_queued_chat_send_message(
+                                msg,
+                                queued_input,
+                                queued_attachments if isinstance(queued_attachments, list) else None,
+                            )
                             self._user_messages.put_nowait(queued_msg)
                             logger.info(
                                 "[MessageHandler] evolution approval answered, queued supplement dispatched: id=%s session_id=%s",
@@ -1289,6 +1548,10 @@ class MessageHandler(ABC):
                     )
                     new_input = (msg.params or {}).get("new_input")
                     has_new_input = isinstance(new_input, str) and new_input.strip()
+                    raw_attachments = (msg.params or {}).get("attachments")
+                    supplement_attachments = (
+                        raw_attachments if isinstance(raw_attachments, list) else None
+                    )
                     intent = (msg.params or {}).get("intent", "cancel")
 
                     if has_new_input:
@@ -1300,7 +1563,11 @@ class MessageHandler(ABC):
                             )
                         ):
                             queued_input = new_input.strip()
-                            self._queue_supplement_input(msg.session_id, queued_input)
+                            self._queue_supplement_input(
+                                msg.session_id,
+                                queued_input,
+                                supplement_attachments,
+                            )
                             logger.info(
                                 "[MessageHandler] evolution phase pending, queue supplement input: session_id=%s",
                                 msg.session_id,
@@ -1373,6 +1640,11 @@ class MessageHandler(ABC):
                                 "query": new_input.strip(),
                                 "session_id": msg.session_id,
                                 "is_supplement": True,
+                                **(
+                                    {"attachments": supplement_attachments}
+                                    if supplement_attachments
+                                    else {}
+                                ),
                             },
                             timestamp=time.time(),
                             ok=True,
@@ -1414,6 +1686,32 @@ class MessageHandler(ABC):
                     else:
                         if not should_forward:
                             continue  # 不相关消息，跳过
+
+                # ---- Resolve @file references in chat.send content ----
+                if msg.req_method == ReqMethod.CHAT_SEND and msg.params:
+                    content = msg.params.get("query") or msg.params.get("content") or ""
+                    attachments = msg.params.get("attachments")
+                    cwd = None
+                    if isinstance(msg.metadata, dict):
+                        cwd = msg.metadata.get("cwd")
+                    enriched = content
+                    if attachments:
+                        enriched = self._resolve_structured_attachments(
+                            content,
+                            attachments,
+                            cwd=cwd,
+                        )
+                    elif content and "@" in content:
+                        enriched = self._resolve_at_file_references(content, cwd=cwd)
+                    if enriched != content:
+                        msg.params = dict(msg.params)
+                        msg.params["query"] = enriched
+                        if "content" in msg.params:
+                            msg.params["content"] = enriched
+                        logger.info(
+                            "[MessageHandler] attachments resolved in chat.send: id=%s",
+                            msg.id,
+                        )
 
                 logger.info(
                     "[MessageHandler] 从 user_messages 取出，发往 AgentServer: id=%s channel_id=%s is_stream=%s",

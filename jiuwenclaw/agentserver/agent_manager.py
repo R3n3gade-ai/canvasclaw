@@ -5,8 +5,11 @@
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from typing import Any, TYPE_CHECKING
+
+from jiuwenclaw.e2a.acp.protocol import build_acp_initialize_result
 
 if TYPE_CHECKING:
     from jiuwenclaw.agentserver.interface import JiuWenClaw
@@ -15,18 +18,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-ACP_DEFAULT_CAPABILITIES: dict[str, Any] = {
-    "protocolVersion": "0.1.0",
-    "serverInfo": {
-        "name": "JiuWenClaw",
-        "version": "1.0.0",
-    },
-    "capabilities": {
-        "tools": True,
-        "resources": True,
-        "streaming": True,
-    },
-}
+ACP_DEFAULT_CAPABILITIES: dict[str, Any] = build_acp_initialize_result()
 
 
 def _build_acp_agent_config(extra_config: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -57,11 +49,12 @@ class AgentManager:
     """
 
     def __init__(self) -> None:
-        self.agents: dict[str, "JiuWenClaw"] = {}
+        self.agents: dict[str, dict[str, "JiuWenClaw"]] = {}
         self._client_capabilities_by_channel: dict[str, dict[str, Any]] = {}
+        self._latest_env_overrides: dict[str, Any] = {}
 
     async def _create_agent(
-        self, agent_key: str, config: dict[str, Any] | None = None
+        self, agent_key: str, mode: str = "agent", config: dict[str, Any] | None = None
     ) -> "JiuWenClaw":
         """创建 Agent 实例.
 
@@ -74,11 +67,16 @@ class AgentManager:
         """
         from jiuwenclaw.agentserver.interface import JiuWenClaw
 
-        mode = "code" if agent_key in ("acp", "tui") else "claw"
+        for env_key, env_value in self._latest_env_overrides.items():
+            key = str(env_key)
+            if env_value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = str(env_value)
         logger.info("[AgentManager] Creating %s agent (mode=%s)", agent_key, mode)
         agent = JiuWenClaw()
         await agent.create_instance(config, mode=mode)
-        self.agents[agent_key] = agent
+        self.agents.setdefault(agent_key, {})[mode] = agent
         logger.info("[AgentManager] %s agent created", agent_key)
         return agent
 
@@ -105,14 +103,16 @@ class AgentManager:
 
             if "acp" in self.agents:
                 logger.info("[AgentManager] Resetting ACP agent")
-                try:
-                    await self.agents["acp"].cleanup()
-                except Exception as e:
-                    logger.warning("[AgentManager] ACP agent cleanup failed: %s", e)
+                for agent in self.agents.get("acp", {}).values():
+                    if hasattr(agent, "cleanup"):
+                        try:
+                            await agent.cleanup()
+                        except Exception as e:
+                            logger.warning("[AgentManager] ACP agent cleanup failed: %s", e)
                 del self.agents["acp"]
 
             config = _build_acp_agent_config(extra_config)
-            await self._create_agent("acp", config)
+            await self._create_agent("acp", "code", config)
 
             return ACP_DEFAULT_CAPABILITIES.copy()
         return None
@@ -141,23 +141,26 @@ class AgentManager:
             return session_id
         return "default"
 
-    async def get_agent(self, channel_id: str = "") -> "JiuWenClaw | None":
+    async def get_agent(self, channel_id: str = "", mode: str = "agent") -> "JiuWenClaw | None":
         """获取 Agent 实例（自动创建）.
 
         如果 agent 不存在，会自动创建（仅用于非 ACP 场景）。
 
         Args:
             channel_id: 通道 ID
+            mode: 每个模式对应的实例
 
         Returns:
             JiuWenClaw | None: Agent 实例
         """
-        if channel_id not in self.agents:
+        if channel_id in self.agents and mode in self.agents[channel_id]:
+            return self.agents[channel_id][mode]
+        else:
             config: dict[str, Any] | None = None
             if channel_id == "acp":
                 config = _build_acp_agent_config()
-            await self._create_agent(channel_id, config)
-        return self.agents.get(channel_id)
+            await self._create_agent(channel_id, mode, config)
+        return self.agents.get(channel_id, {}).get(mode)
 
     def get_agent_nowait(self, channel_id: str = "") -> "JiuWenClaw | None":
         """获取 Agent 实例（同步，不自动创建）.
@@ -168,25 +171,46 @@ class AgentManager:
         Returns:
             JiuWenClaw | None: Agent 实例，如果不存在则返回 None
         """
-        return self.agents.get(channel_id)
+        channel_key = channel_id or "default"
+        channel_agents = self.agents.get(channel_key, {})
+        if isinstance(channel_agents, dict):
+            return channel_agents.get("agent") or next(iter(channel_agents.values()), None)
+        return None
 
     async def reload_agents_config(self, config, env) -> None:
         """reload agent config"""
-        for channel_id, agent in self.agents.items():
-            await agent.reload_agent_config(
-                config_base=config,
-                env_overrides=env,
-            )
+        self._latest_env_overrides = dict(env) if isinstance(env, dict) else {}
+        for env_key, env_value in self._latest_env_overrides.items():
+            key = str(env_key)
+            if env_value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = str(env_value)
+
+        for channel_id, agents in self.agents.items():
+            if not isinstance(agents, dict):
+                logger.warning(
+                    "[AgentManager] unexpected agents entry for channel %s: %r",
+                    channel_id,
+                    type(agents),
+                )
+                continue
+            for _, agent in agents.items():
+                await agent.reload_agent_config(
+                    config_base=config,
+                    env_overrides=env,
+                )
             logger.info(f"channel {channel_id} reload agent config success.")
 
     async def cleanup(self) -> None:
         """清理所有 agent 实例."""
-        for key in list(self.agents.keys()):
-            if hasattr(self.agents[key], "cleanup"):
-                try:
-                    await self.agents[key].cleanup()
-                except Exception as e:
-                    logger.warning("[AgentManager] Agent cleanup failed: %s", e)
+        for key, agents in list(self.agents.items()):
+            for agent in agents.values():
+                if hasattr(agent, "cleanup"):
+                    try:
+                        await agent.cleanup()
+                    except Exception as e:
+                        logger.warning("[AgentManager] Agent cleanup failed: %s", e)
             del self.agents[key]
         self._client_capabilities_by_channel.clear()
         logger.info("[AgentManager] All agents cleaned up")
