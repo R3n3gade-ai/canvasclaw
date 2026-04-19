@@ -35,6 +35,7 @@ from jiuwenclaw.config import (
     update_updater_in_config,
 )
 from jiuwenclaw.jiuwen_core_patch import apply_openai_model_client_patch
+from jiuwenclaw.social_station_service import SocialStationService
 from jiuwenclaw.updater import WindowsUpdaterService
 from jiuwenclaw.utils import (
     get_user_workspace_dir,
@@ -248,6 +249,7 @@ def _register_web_handlers(bind: WebHandlersBindParams) -> None:
     heartbeat_service = bind.heartbeat_service
     cron_controller = bind.cron_controller
     updater_service = bind.updater_service
+    social_station_service = SocialStationService()
 
     from jiuwenclaw.schema.message import Message, EventType
 
@@ -1417,6 +1419,275 @@ def _register_web_handlers(bind: WebHandlersBindParams) -> None:
     def _get_cron():
         return _resolve(cron_controller)
 
+    def _get_social_station() -> SocialStationService:
+        return social_station_service
+
+    async def _social_station_get_state(ws, req_id, params, session_id):
+        try:
+            await channel.send_response(ws, req_id, ok=True, payload={"state": _get_social_station().get_state()})
+        except Exception as e:  # noqa: BLE001
+            logger.exception("[social.station.get_state] %s", e)
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="INTERNAL_ERROR")
+
+    async def _social_station_update_state(ws, req_id, params, session_id):
+        if not isinstance(params, dict):
+            await channel.send_response(ws, req_id, ok=False, error="params must be object", code="BAD_REQUEST")
+            return
+        updates = params.get("updates") or {}
+        if not isinstance(updates, dict):
+            await channel.send_response(ws, req_id, ok=False, error="updates must be object", code="BAD_REQUEST")
+            return
+        try:
+            state = _get_social_station().update_state(updates)
+            await channel.send_response(ws, req_id, ok=True, payload={"state": state})
+        except Exception as e:  # noqa: BLE001
+            logger.exception("[social.station.update_state] %s", e)
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_set_active_tab(ws, req_id, params, session_id):
+        tab = str((params or {}).get("tab") or "").strip()
+        try:
+            state = _get_social_station().set_active_tab(tab)
+            await channel.send_response(ws, req_id, ok=True, payload={"state": state})
+        except Exception as e:  # noqa: BLE001
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_set_selected_date(ws, req_id, params, session_id):
+        value = str((params or {}).get("date") or "").strip()
+        try:
+            state = _get_social_station().set_selected_date(value)
+            await channel.send_response(ws, req_id, ok=True, payload={"state": state})
+        except Exception as e:  # noqa: BLE001
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_shift_visible_month(ws, req_id, params, session_id):
+        try:
+            offset = int((params or {}).get("offset") or 0)
+            state = _get_social_station().shift_visible_month(offset)
+            await channel.send_response(ws, req_id, ok=True, payload={"state": state})
+        except Exception as e:  # noqa: BLE001
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_jump_to_today(ws, req_id, params, session_id):
+        try:
+            state = _get_social_station().jump_to_today()
+            await channel.send_response(ws, req_id, ok=True, payload={"state": state})
+        except Exception as e:  # noqa: BLE001
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="INTERNAL_ERROR")
+
+    async def _social_station_toggle_connected_platform(ws, req_id, params, session_id):
+        platform = str((params or {}).get("platform") or "").strip()
+        try:
+            state = _get_social_station().toggle_connected_platform(platform)
+            await channel.send_response(ws, req_id, ok=True, payload={"state": state})
+        except Exception as e:  # noqa: BLE001
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_toggle_enabled_platform(ws, req_id, params, session_id):
+        platform = str((params or {}).get("platform") or "").strip()
+        try:
+            state = _get_social_station().toggle_enabled_platform(platform)
+            await channel.send_response(ws, req_id, ok=True, payload={"state": state})
+        except Exception as e:  # noqa: BLE001
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_update_connection(ws, req_id, params, session_id):
+        if not isinstance(params, dict):
+            await channel.send_response(ws, req_id, ok=False, error="params must be object", code="BAD_REQUEST")
+            return
+        platform = str(params.get("platform") or "").strip()
+        updates = params.get("updates") or {}
+        if not isinstance(updates, dict):
+            await channel.send_response(ws, req_id, ok=False, error="updates must be object", code="BAD_REQUEST")
+            return
+        try:
+            state = _get_social_station().update_connection(platform, updates)
+            await channel.send_response(ws, req_id, ok=True, payload={"state": state})
+        except Exception as e:  # noqa: BLE001
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_update_draft(ws, req_id, params, session_id):
+        updates = (params or {}).get("updates") or {}
+        if not isinstance(updates, dict):
+            await channel.send_response(ws, req_id, ok=False, error="updates must be object", code="BAD_REQUEST")
+            return
+        try:
+            state = _get_social_station().update_draft(updates)
+            await channel.send_response(ws, req_id, ok=True, payload={"state": state})
+        except Exception as e:  # noqa: BLE001
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_update_automation(ws, req_id, params, session_id):
+        updates = (params or {}).get("updates") or {}
+        if not isinstance(updates, dict):
+            await channel.send_response(ws, req_id, ok=False, error="updates must be object", code="BAD_REQUEST")
+            return
+        try:
+            state = _get_social_station().update_automation(updates)
+            await channel.send_response(ws, req_id, ok=True, payload={"state": state})
+        except Exception as e:  # noqa: BLE001
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_set_feed_filter(ws, req_id, params, session_id):
+        feed_filter = str((params or {}).get("feedFilter") or "").strip()
+        try:
+            state = _get_social_station().set_feed_filter(feed_filter)
+            await channel.send_response(ws, req_id, ok=True, payload={"state": state})
+        except Exception as e:  # noqa: BLE001
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_create_post(ws, req_id, params, session_id):
+        if not isinstance(params, dict):
+            await channel.send_response(ws, req_id, ok=False, error="params must be object", code="BAD_REQUEST")
+            return
+        status = str(params.get("status") or "").strip()
+        draft_override = params.get("draft") if isinstance(params.get("draft"), dict) else None
+        source = str(params.get("source") or "manual").strip() or "manual"
+        try:
+            post = _get_social_station().create_post(status=status, draft_override=draft_override, source=source)
+            job = None
+            if status == "scheduled":
+                cc = _get_cron()
+                if cc is not None:
+                    job = await cc.create_job(_get_social_station().build_cron_job_payload(post))
+                    job_id = job.get("id") if isinstance(job, dict) else None
+                    post = _get_social_station().sync_post_job(post["id"], job_id)
+            await channel.send_response(
+                ws,
+                req_id,
+                ok=True,
+                payload={"post": post, "job": job, "state": _get_social_station().get_state()},
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.exception("[social.station.create_post] %s", e)
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_update_post(ws, req_id, params, session_id):
+        if not isinstance(params, dict):
+            await channel.send_response(ws, req_id, ok=False, error="params must be object", code="BAD_REQUEST")
+            return
+        post_id = str(params.get("postId") or "").strip()
+        patch = params.get("patch") or {}
+        if not isinstance(patch, dict):
+            await channel.send_response(ws, req_id, ok=False, error="patch must be object", code="BAD_REQUEST")
+            return
+        try:
+            post = _get_social_station().update_post(post_id, patch)
+            await channel.send_response(ws, req_id, ok=True, payload={"post": post, "state": _get_social_station().get_state()})
+        except Exception as e:  # noqa: BLE001
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_delete_post(ws, req_id, params, session_id):
+        post_id = str((params or {}).get("postId") or "").strip()
+        try:
+            state = _get_social_station().delete_post(post_id)
+            await channel.send_response(ws, req_id, ok=True, payload={"state": state})
+        except Exception as e:  # noqa: BLE001
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_upsert_rss_feed(ws, req_id, params, session_id):
+        feed = (params or {}).get("feed")
+        if not isinstance(feed, dict):
+            await channel.send_response(ws, req_id, ok=False, error="feed must be object", code="BAD_REQUEST")
+            return
+        try:
+            item = _get_social_station().upsert_rss_feed(feed)
+            await channel.send_response(ws, req_id, ok=True, payload={"feed": item, "state": _get_social_station().get_state()})
+        except Exception as e:  # noqa: BLE001
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_remove_rss_feed(ws, req_id, params, session_id):
+        feed_id = str((params or {}).get("feedId") or "").strip()
+        try:
+            state = _get_social_station().remove_rss_feed(feed_id)
+            await channel.send_response(ws, req_id, ok=True, payload={"state": state})
+        except Exception as e:  # noqa: BLE001
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_preview_rss_feed(ws, req_id, params, session_id):
+        url = str((params or {}).get("url") or "").strip()
+        try:
+            items = await _get_social_station().preview_rss_feed(url)
+            await channel.send_response(ws, req_id, ok=True, payload={"items": items, "state": _get_social_station().get_state()})
+        except Exception as e:  # noqa: BLE001
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_set_upload_post_api_key(ws, req_id, params, session_id):
+        api_key = str((params or {}).get("apiKey") or "").strip()
+        try:
+            state = _get_social_station().set_upload_post_api_key(api_key)
+            await channel.send_response(ws, req_id, ok=True, payload={"state": state})
+        except Exception as e:  # noqa: BLE001
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_upload_media(ws, req_id, params, session_id):
+        name = str((params or {}).get("name") or "upload").strip() or "upload"
+        data_url = str((params or {}).get("dataUrl") or "").strip()
+        try:
+            asset = _get_social_station().upload_media_asset(name, data_url)
+            await channel.send_response(ws, req_id, ok=True, payload={"asset": asset, "state": _get_social_station().get_state()})
+        except Exception as e:  # noqa: BLE001
+            logger.exception("[social.station.upload_media] %s", e)
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_list_profiles(ws, req_id, params, session_id):
+        try:
+            profiles = await _get_social_station().list_upload_post_profiles()
+            await channel.send_response(ws, req_id, ok=True, payload={"profiles": profiles, "state": _get_social_station().get_state()})
+        except Exception as e:  # noqa: BLE001
+            logger.exception("[social.station.list_profiles] %s", e)
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_ensure_profile(ws, req_id, params, session_id):
+        profile_name = str((params or {}).get("profileName") or "").strip()
+        try:
+            profile = await _get_social_station().ensure_upload_post_profile(profile_name)
+            await channel.send_response(ws, req_id, ok=True, payload={"profile": profile, "state": _get_social_station().get_state()})
+        except Exception as e:  # noqa: BLE001
+            logger.exception("[social.station.ensure_profile] %s", e)
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_generate_connect_url(ws, req_id, params, session_id):
+        profile_name = str((params or {}).get("profileName") or "").strip()
+        redirect_url = str((params or {}).get("redirectUrl") or "").strip()
+        logo_image = str((params or {}).get("logoImage") or "").strip()
+        connect_title = str((params or {}).get("connectTitle") or "Connect your social accounts").strip() or "Connect your social accounts"
+        connect_description = str((params or {}).get("connectDescription") or "Link the social media accounts you want Social Station to publish to.").strip()
+        platforms = [item for item in list((params or {}).get("platforms") or []) if str(item) in {"tiktok", "instagram", "x", "facebook"}]
+        show_calendar = bool((params or {}).get("showCalendar", True))
+        readonly_calendar = bool((params or {}).get("readonlyCalendar", False))
+        try:
+            result = await _get_social_station().generate_upload_post_connect_url(
+                profile_name,
+                redirect_url=redirect_url,
+                logo_image=logo_image,
+                connect_title=connect_title,
+                connect_description=connect_description,
+                platforms=platforms,
+                show_calendar=show_calendar,
+                readonly_calendar=readonly_calendar,
+            )
+            await channel.send_response(ws, req_id, ok=True, payload={"result": result, "state": _get_social_station().get_state()})
+        except Exception as e:  # noqa: BLE001
+            logger.exception("[social.station.generate_connect_url] %s", e)
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_publish_post(ws, req_id, params, session_id):
+        post_id = str((params or {}).get("postId") or "").strip()
+        try:
+            post = await _get_social_station().publish_post_via_upload_post(post_id)
+            await channel.send_response(ws, req_id, ok=True, payload={"post": post, "state": _get_social_station().get_state()})
+        except Exception as e:  # noqa: BLE001
+            logger.exception("[social.station.publish_post] %s", e)
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
+    async def _social_station_launch_agent(ws, req_id, params, session_id):
+        try:
+            run = _get_social_station().launch_agent()
+            await channel.send_response(ws, req_id, ok=True, payload={"run": run, "state": _get_social_station().get_state()})
+        except Exception as e:  # noqa: BLE001
+            await channel.send_response(ws, req_id, ok=False, error=str(e), code="BAD_REQUEST")
+
     async def _cron_job_list(ws, req_id, params, session_id):
         cc = _get_cron()
         if cc is None:
@@ -1591,6 +1862,31 @@ def _register_web_handlers(bind: WebHandlersBindParams) -> None:
     channel.register_method("heartbeat.get_conf", _heartbeat_get_conf)
     channel.register_method("heartbeat.set_conf", _heartbeat_set_conf)
     channel.register_method("heartbeat.get_path", _heartbeat_get_path)
+    channel.register_method("social.station.get_state", _social_station_get_state)
+    channel.register_method("social.station.update_state", _social_station_update_state)
+    channel.register_method("social.station.set_active_tab", _social_station_set_active_tab)
+    channel.register_method("social.station.set_selected_date", _social_station_set_selected_date)
+    channel.register_method("social.station.shift_visible_month", _social_station_shift_visible_month)
+    channel.register_method("social.station.jump_to_today", _social_station_jump_to_today)
+    channel.register_method("social.station.toggle_connected_platform", _social_station_toggle_connected_platform)
+    channel.register_method("social.station.toggle_enabled_platform", _social_station_toggle_enabled_platform)
+    channel.register_method("social.station.update_connection", _social_station_update_connection)
+    channel.register_method("social.station.update_draft", _social_station_update_draft)
+    channel.register_method("social.station.update_automation", _social_station_update_automation)
+    channel.register_method("social.station.set_feed_filter", _social_station_set_feed_filter)
+    channel.register_method("social.station.create_post", _social_station_create_post)
+    channel.register_method("social.station.update_post", _social_station_update_post)
+    channel.register_method("social.station.delete_post", _social_station_delete_post)
+    channel.register_method("social.station.upsert_rss_feed", _social_station_upsert_rss_feed)
+    channel.register_method("social.station.remove_rss_feed", _social_station_remove_rss_feed)
+    channel.register_method("social.station.preview_rss_feed", _social_station_preview_rss_feed)
+    channel.register_method("social.station.set_upload_post_api_key", _social_station_set_upload_post_api_key)
+    channel.register_method("social.station.upload_media", _social_station_upload_media)
+    channel.register_method("social.station.list_profiles", _social_station_list_profiles)
+    channel.register_method("social.station.ensure_profile", _social_station_ensure_profile)
+    channel.register_method("social.station.generate_connect_url", _social_station_generate_connect_url)
+    channel.register_method("social.station.publish_post", _social_station_publish_post)
+    channel.register_method("social.station.launch_agent", _social_station_launch_agent)
     channel.register_method("channel.feishu.get_conf", _channel_feishu_get_conf)
     channel.register_method("channel.feishu.set_conf", _channel_feishu_set_conf)
     channel.register_method("channel.xiaoyi.get_conf", _channel_xiaoyi_get_conf)

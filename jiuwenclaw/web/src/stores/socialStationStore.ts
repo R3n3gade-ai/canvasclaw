@@ -1,19 +1,75 @@
 import { create } from 'zustand';
+import { webRequest } from '../services/webClient';
 
-const STORAGE_KEY = 'deep_canvas_social_station_v1';
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => reject(new Error('Failed to read file.'));
+    reader.readAsDataURL(file);
+  });
+}
 
 export type SocialPlatformKey = 'tiktok' | 'instagram' | 'x' | 'facebook';
 export type SocialTabKey = 'creation' | 'automation' | 'feed';
-export type SocialPostStatus = 'pending' | 'scheduled' | 'posted';
+export type SocialPostStatus = 'pending' | 'scheduled' | 'posted' | 'failed';
 export type SocialFormatKey = 'post' | 'story' | 'reel' | 'thread';
 export type SocialAudienceKey = 'public' | 'close-friends' | 'followers';
-export type SocialFeedFilter = 'all' | 'pending' | 'scheduled' | 'posted';
+export type SocialFeedFilter = 'all' | 'pending' | 'scheduled' | 'posted' | 'failed';
 
 export interface SocialPlatformDefinition {
   key: SocialPlatformKey;
   label: string;
   glyph: string;
   accentClass: string;
+  supports?: string[];
+}
+
+export interface SocialPlatformConnection {
+  connected: boolean;
+  enabled: boolean;
+  displayName: string;
+  handle: string;
+  accountId: string;
+  tokenRef: string;
+  status: string;
+  lastSyncAt: string;
+  oauthConfigured: boolean;
+  scopes: string[];
+  notes: string;
+}
+
+export interface SocialProviderState {
+  name: string;
+  apiConfigured: boolean;
+  baseUrl: string;
+}
+
+export interface SocialProviderProfile {
+  profileName: string;
+  connectedPlatforms: SocialPlatformKey[];
+  raw?: Record<string, unknown>;
+}
+
+export interface SocialMediaAsset {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  path: string;
+  createdAt: string;
+}
+
+export interface SocialPostMeta {
+  supportingText: string;
+  firstComment: string;
+  hashtags: string;
+  cta: string;
+  audience: SocialAudienceKey;
+  campaignTag: string;
+  uploads: string[];
+  autoReplyEnabled: boolean;
+  crossPostEnabled: boolean;
 }
 
 export interface SocialPostItem {
@@ -25,6 +81,15 @@ export interface SocialPostItem {
   platforms: SocialPlatformKey[];
   status: SocialPostStatus;
   format: SocialFormatKey;
+  source?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  publishedAt?: string;
+  scheduledJobId?: string;
+  rssFeedId?: string;
+  agentRunId?: string;
+  failReason?: string;
+  meta?: Partial<SocialPostMeta>;
 }
 
 export interface SocialComposerDraft {
@@ -53,40 +118,91 @@ export interface SocialAutomationSettings {
   interactionLimit: string;
 }
 
-interface SocialStationSnapshot {
+export interface SocialRssFeed {
+  id: string;
+  name: string;
+  url: string;
+  enabled: boolean;
+  publishPlatforms: SocialPlatformKey[];
+  prompt: string;
+  lastCheckedAt: string;
+  lastItemAt: string;
+}
+
+export interface SocialAgentRun {
+  id: string;
+  name: string;
+  status: string;
+  startedAt: string;
+  objective: string;
+  mode: string;
+  approvalMode: string;
+  platforms: SocialPlatformKey[];
+}
+
+export interface SocialMainAgentState {
+  enabled: boolean;
+  scope: string[];
+  lastActionAt: string;
+  notes: string;
+}
+
+export interface SocialStationSnapshot {
   visibleMonth: string;
   selectedDate: string;
   activeTab: SocialTabKey;
-  connectedPlatforms: Record<SocialPlatformKey, boolean>;
-  enabledPlatforms: Record<SocialPlatformKey, boolean>;
+  platforms: SocialPlatformDefinition[];
+  connections: Record<SocialPlatformKey, SocialPlatformConnection>;
+  provider?: SocialProviderState;
+  profiles?: SocialProviderProfile[];
+  currentProfileName?: string;
+  currentConnectUrl?: string;
+  mediaLibrary?: SocialMediaAsset[];
   draft: SocialComposerDraft;
   automation: SocialAutomationSettings;
   feedFilter: SocialFeedFilter;
   posts: SocialPostItem[];
+  rssFeeds: SocialRssFeed[];
+  feedPreview?: Array<{ title: string; link: string; publishedAt: string; summary: string }>;
+  agentRuns: SocialAgentRun[];
+  mainAgent: SocialMainAgentState;
+  updatedAt?: string;
 }
 
 interface SocialStationState extends SocialStationSnapshot {
-  shiftVisibleMonth: (offset: number) => void;
-  jumpToToday: () => void;
-  setSelectedDate: (date: string) => void;
-  setActiveTab: (tab: SocialTabKey) => void;
-  toggleConnectedPlatform: (platform: SocialPlatformKey) => void;
-  toggleEnabledPlatform: (platform: SocialPlatformKey) => void;
-  updateDraft: (updates: Partial<SocialComposerDraft>) => void;
-  updateAutomation: (updates: Partial<SocialAutomationSettings>) => void;
-  setFeedFilter: (filter: SocialFeedFilter) => void;
-  createPost: (status: Extract<SocialPostStatus, 'pending' | 'scheduled'>) => void;
+  isLoaded: boolean;
+  isLoading: boolean;
+  error: string | null;
+  loadState: () => Promise<void>;
+  refreshState: () => Promise<void>;
+  clearError: () => void;
+  shiftVisibleMonth: (offset: number) => Promise<void>;
+  jumpToToday: () => Promise<void>;
+  setSelectedDate: (date: string) => Promise<void>;
+  setActiveTab: (tab: SocialTabKey) => Promise<void>;
+  toggleConnectedPlatform: (platform: SocialPlatformKey) => Promise<void>;
+  toggleEnabledPlatform: (platform: SocialPlatformKey) => Promise<void>;
+  updateConnection: (platform: SocialPlatformKey, updates: Partial<SocialPlatformConnection>) => Promise<void>;
+  setUploadPostApiKey: (apiKey: string) => Promise<void>;
+  uploadMedia: (file: File) => Promise<void>;
+  listProfiles: () => Promise<void>;
+  ensureProfile: (profileName: string) => Promise<void>;
+  generateConnectUrl: (profileName: string, params?: { redirectUrl?: string; logoImage?: string; connectTitle?: string; connectDescription?: string; platforms?: SocialPlatformKey[]; showCalendar?: boolean; readonlyCalendar?: boolean }) => Promise<{ accessUrl: string; profileName: string } | null>;
+  publishPost: (postId: string) => Promise<void>;
+  updateDraft: (updates: Partial<SocialComposerDraft>) => Promise<void>;
+  updateAutomation: (updates: Partial<SocialAutomationSettings>) => Promise<void>;
+  setFeedFilter: (filter: SocialFeedFilter) => Promise<void>;
+  createPost: (status: Extract<SocialPostStatus, 'pending' | 'scheduled'>) => Promise<void>;
+  updatePost: (postId: string, patch: Partial<SocialPostItem>) => Promise<void>;
+  deletePost: (postId: string) => Promise<void>;
+  upsertRssFeed: (feed: Partial<SocialRssFeed> & Pick<SocialRssFeed, 'url'>) => Promise<void>;
+  removeRssFeed: (feedId: string) => Promise<void>;
+  previewRssFeed: (url: string) => Promise<void>;
+  launchAgent: () => Promise<void>;
 }
 
-export const SOCIAL_PLATFORMS: SocialPlatformDefinition[] = [
-  { key: 'tiktok', label: 'TikTok', glyph: 'TT', accentClass: 'is-tiktok' },
-  { key: 'instagram', label: 'Instagram', glyph: 'IG', accentClass: 'is-instagram' },
-  { key: 'x', label: 'X', glyph: 'X', accentClass: 'is-x' },
-  { key: 'facebook', label: 'Facebook', glyph: 'FB', accentClass: 'is-facebook' },
-];
-
 export const SOCIAL_FORMAT_OPTIONS: SocialFormatKey[] = ['post', 'story', 'reel', 'thread'];
-export const SOCIAL_FEED_FILTERS: SocialFeedFilter[] = ['all', 'pending', 'scheduled', 'posted'];
+export const SOCIAL_FEED_FILTERS: SocialFeedFilter[] = ['all', 'pending', 'scheduled', 'posted', 'failed'];
 export const SOCIAL_AUDIENCE_OPTIONS: SocialAudienceKey[] = ['public', 'close-friends', 'followers'];
 export const SOCIAL_AGENT_TONE_OPTIONS = ['Friendly', 'Bold', 'Executive', 'Supportive'] as const;
 export const SOCIAL_AGENT_MODE_OPTIONS = ['Post + Engage', 'Post Only', 'Engage Only'] as const;
@@ -96,24 +212,27 @@ export const SOCIAL_APPROVAL_MODE_OPTIONS = [
   'Fully autonomous',
 ] as const;
 
-function toIsoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function startOfMonthIso(date: Date): string {
-  return toIsoDate(new Date(date.getFullYear(), date.getMonth(), 1));
-}
-
-function parseIsoDate(value: string): Date {
-  return new Date(`${value}T00:00:00`);
-}
-
-function makeId(prefix: string): string {
-  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function createDefaultDraft(): SocialComposerDraft {
-  return {
+const EMPTY_STATE: SocialStationSnapshot = {
+  visibleMonth: new Date().toISOString().slice(0, 7) + '-01',
+  selectedDate: new Date().toISOString().slice(0, 10),
+  activeTab: 'creation',
+  platforms: SOCIAL_PLATFORMS,
+  connections: {
+    tiktok: emptyConnection(),
+    instagram: emptyConnection(),
+    x: emptyConnection(),
+    facebook: emptyConnection(),
+  },
+  provider: {
+    name: 'upload-post',
+    apiConfigured: false,
+    baseUrl: '',
+  },
+  profiles: [],
+  currentProfileName: '',
+  currentConnectUrl: '',
+  mediaLibrary: [],
+  draft: {
     selectedFormat: 'post',
     caption: '',
     supportingText: '',
@@ -121,244 +240,207 @@ function createDefaultDraft(): SocialComposerDraft {
     hashtags: '',
     cta: '',
     audience: 'public',
-    campaignTag: 'Launch Sprint',
+    campaignTag: '',
     scheduleTime: '10:30',
     uploads: [],
     autoReplyEnabled: true,
     crossPostEnabled: true,
-  };
-}
-
-function createDefaultAutomation(): SocialAutomationSettings {
-  return {
+  },
+  automation: {
     agentName: 'Pulse Operator',
-    agentObjective: 'Publish scheduled content, answer safe comments, and surface engagement opportunities.',
+    agentObjective: '',
     agentTone: 'Friendly',
     agentMode: 'Post + Engage',
     approvalMode: 'Approval for replies only',
     postingWindow: '09:00 - 18:00',
     dailyLimit: '12',
     interactionLimit: '24',
-  };
-}
+  },
+  feedFilter: 'all',
+  posts: [],
+  rssFeeds: [],
+  feedPreview: [],
+  agentRuns: [],
+  mainAgent: {
+    enabled: true,
+    scope: [],
+    lastActionAt: '',
+    notes: '',
+  },
+  updatedAt: '',
+};
 
-function createDefaultSnapshot(): SocialStationSnapshot {
-  const today = new Date();
-  const todayIso = toIsoDate(today);
+function emptyConnection(): SocialPlatformConnection {
   return {
-    visibleMonth: startOfMonthIso(today),
-    selectedDate: todayIso,
-    activeTab: 'creation',
-    connectedPlatforms: {
-      tiktok: false,
-      instagram: false,
-      x: false,
-      facebook: false,
-    },
-    enabledPlatforms: {
-      tiktok: true,
-      instagram: true,
-      x: false,
-      facebook: false,
-    },
-    draft: createDefaultDraft(),
-    automation: createDefaultAutomation(),
-    feedFilter: 'all',
-    posts: [
-      {
-        id: 'sample_1',
-        title: 'Founder teaser cut',
-        caption: 'Short teaser for the founder clip rollout.',
-        date: todayIso,
-        time: '09:00',
-        platforms: ['instagram', 'tiktok'],
-        status: 'pending',
-        format: 'reel',
-      },
-      {
-        id: 'sample_2',
-        title: 'Product launch thread',
-        caption: 'Thread covering release highlights and CTA.',
-        date: todayIso,
-        time: '14:00',
-        platforms: ['x', 'facebook'],
-        status: 'posted',
-        format: 'thread',
-      },
-    ],
+    connected: false,
+    enabled: false,
+    displayName: '',
+    handle: '',
+    accountId: '',
+    tokenRef: '',
+    status: 'disconnected',
+    lastSyncAt: '',
+    oauthConfigured: false,
+    scopes: [],
+    notes: '',
   };
 }
 
-function loadSnapshot(): SocialStationSnapshot {
-  const fallback = createDefaultSnapshot();
-
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return fallback;
-
-    const parsed = JSON.parse(raw) as Partial<SocialStationSnapshot>;
-    return {
-      visibleMonth: typeof parsed.visibleMonth === 'string' ? parsed.visibleMonth : fallback.visibleMonth,
-      selectedDate: typeof parsed.selectedDate === 'string' ? parsed.selectedDate : fallback.selectedDate,
-      activeTab: parsed.activeTab === 'creation' || parsed.activeTab === 'automation' || parsed.activeTab === 'feed'
-        ? parsed.activeTab
-        : fallback.activeTab,
-      connectedPlatforms: { ...fallback.connectedPlatforms, ...(parsed.connectedPlatforms ?? {}) },
-      enabledPlatforms: { ...fallback.enabledPlatforms, ...(parsed.enabledPlatforms ?? {}) },
-      draft: { ...fallback.draft, ...(parsed.draft ?? {}) },
-      automation: { ...fallback.automation, ...(parsed.automation ?? {}) },
-      feedFilter:
-        parsed.feedFilter === 'pending' || parsed.feedFilter === 'scheduled' || parsed.feedFilter === 'posted' || parsed.feedFilter === 'all'
-          ? parsed.feedFilter
-          : fallback.feedFilter,
-      posts: Array.isArray(parsed.posts) ? parsed.posts : fallback.posts,
-    };
-  } catch {
-    return fallback;
-  }
+function normalizeState(state: Partial<SocialStationSnapshot> | undefined): SocialStationSnapshot {
+  return {
+    ...EMPTY_STATE,
+    ...state,
+    platforms: Array.isArray(state?.platforms) ? state!.platforms : EMPTY_STATE.platforms,
+    connections: {
+      tiktok: { ...emptyConnection(), ...(state?.connections?.tiktok ?? {}) },
+      instagram: { ...emptyConnection(), ...(state?.connections?.instagram ?? {}) },
+      x: { ...emptyConnection(), ...(state?.connections?.x ?? {}) },
+      facebook: { ...emptyConnection(), ...(state?.connections?.facebook ?? {}) },
+    },
+    provider: { ...EMPTY_STATE.provider, ...(state?.provider ?? {}) },
+    profiles: Array.isArray(state?.profiles) ? state!.profiles : [],
+    currentProfileName: typeof state?.currentProfileName === 'string' ? state.currentProfileName : '',
+    currentConnectUrl: typeof state?.currentConnectUrl === 'string' ? state.currentConnectUrl : '',
+    mediaLibrary: Array.isArray(state?.mediaLibrary) ? state!.mediaLibrary : [],
+    draft: { ...EMPTY_STATE.draft, ...(state?.draft ?? {}) },
+    automation: { ...EMPTY_STATE.automation, ...(state?.automation ?? {}) },
+    posts: Array.isArray(state?.posts) ? state!.posts : [],
+    rssFeeds: Array.isArray(state?.rssFeeds) ? state!.rssFeeds : [],
+    feedPreview: Array.isArray(state?.feedPreview) ? state!.feedPreview : [],
+    agentRuns: Array.isArray(state?.agentRuns) ? state!.agentRuns : [],
+    mainAgent: { ...EMPTY_STATE.mainAgent, ...(state?.mainAgent ?? {}) },
+  };
 }
 
-function persistSnapshot(snapshot: SocialStationSnapshot): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-  } catch {
-    // ignore storage failures
-  }
+async function fetchState(): Promise<SocialStationSnapshot> {
+  const payload = await webRequest<{ state: SocialStationSnapshot }>('social.station.get_state');
+  return normalizeState(payload.state);
 }
 
-function commitSnapshot(
-  set: (partial: SocialStationSnapshot | ((state: SocialStationState) => SocialStationSnapshot)) => void,
-  snapshotOrUpdater: SocialStationSnapshot | ((state: SocialStationState) => SocialStationSnapshot)
-) {
-  set((state) => {
-    const nextSnapshot = typeof snapshotOrUpdater === 'function' ? snapshotOrUpdater(state) : snapshotOrUpdater;
-    persistSnapshot(nextSnapshot);
-    return nextSnapshot;
+function applyState(set: (partial: Partial<SocialStationState>) => void, state: Partial<SocialStationSnapshot>) {
+  set({
+    ...normalizeState(state),
+    isLoaded: true,
+    isLoading: false,
+    error: null,
   });
 }
 
-const initialSnapshot = loadSnapshot();
+async function requestAndApply(
+  set: (partial: Partial<SocialStationState>) => void,
+  method: string,
+  params?: Record<string, unknown>
+): Promise<void> {
+  try {
+    const payload = await webRequest<{ state: SocialStationSnapshot }>(method, params);
+    applyState(set, payload.state);
+  } catch (error) {
+    set({ error: error instanceof Error ? error.message : `Failed request: ${method}` });
+    throw error;
+  }
+}
 
 export const useSocialStationStore = create<SocialStationState>((set) => ({
-  ...initialSnapshot,
+  ...EMPTY_STATE,
+  isLoaded: false,
+  isLoading: false,
+  error: null,
 
-  shiftVisibleMonth: (offset) => {
-    commitSnapshot(set, (state) => {
-      const visibleMonth = parseIsoDate(state.visibleMonth);
-      const nextVisibleMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + offset, 1);
-      return {
-        ...state,
-        visibleMonth: startOfMonthIso(nextVisibleMonth),
-      };
-    });
+  loadState: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      applyState(set, await fetchState());
+    } catch (error) {
+      set({ isLoading: false, error: error instanceof Error ? error.message : 'Failed to load Social Station' });
+    }
   },
 
-  jumpToToday: () => {
-    const today = new Date();
-    const todayIso = toIsoDate(today);
-    commitSnapshot(set, (state) => ({
-      ...state,
-      visibleMonth: startOfMonthIso(today),
-      selectedDate: todayIso,
-    }));
+  refreshState: async () => {
+    try {
+      applyState(set, await fetchState());
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : 'Failed to refresh Social Station' });
+    }
   },
 
-  setSelectedDate: (date) => {
-    const parsed = parseIsoDate(date);
-    commitSnapshot(set, (state) => ({
-      ...state,
-      selectedDate: date,
-      visibleMonth: startOfMonthIso(parsed),
-    }));
+  clearError: () => {
+    set({ error: null });
   },
 
-  setActiveTab: (tab) => {
-    commitSnapshot(set, (state) => ({
-      ...state,
-      activeTab: tab,
-    }));
+  shiftVisibleMonth: async (offset) => requestAndApply(set, 'social.station.shift_visible_month', { offset }),
+
+  jumpToToday: async () => requestAndApply(set, 'social.station.jump_to_today'),
+
+  setSelectedDate: async (date) => requestAndApply(set, 'social.station.set_selected_date', { date }),
+
+  setActiveTab: async (tab) => requestAndApply(set, 'social.station.set_active_tab', { tab }),
+
+  toggleConnectedPlatform: async (platform) => requestAndApply(set, 'social.station.toggle_connected_platform', { platform }),
+
+  toggleEnabledPlatform: async (platform) => requestAndApply(set, 'social.station.toggle_enabled_platform', { platform }),
+
+  updateConnection: async (platform, updates) => requestAndApply(set, 'social.station.update_connection', { platform, updates }),
+
+  setUploadPostApiKey: async (apiKey) => requestAndApply(set, 'social.station.set_upload_post_api_key', { apiKey }),
+
+  uploadMedia: async (file) => {
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      const payload = await webRequest<{ asset: SocialMediaAsset; state: SocialStationSnapshot }>('social.station.upload_media', {
+        name: file.name,
+        dataUrl,
+      });
+      applyState(set, payload.state);
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : 'Failed to upload media' });
+      throw error;
+    }
   },
 
-  toggleConnectedPlatform: (platform) => {
-    commitSnapshot(set, (state) => ({
-      ...state,
-      connectedPlatforms: {
-        ...state.connectedPlatforms,
-        [platform]: !state.connectedPlatforms[platform],
-      },
-    }));
+  listProfiles: async () => requestAndApply(set, 'social.station.list_profiles'),
+
+  ensureProfile: async (profileName) => requestAndApply(set, 'social.station.ensure_profile', { profileName }),
+
+  generateConnectUrl: async (profileName, params) => {
+    try {
+      const payload = await webRequest<{ result: { accessUrl: string; profileName: string }; state: SocialStationSnapshot }>('social.station.generate_connect_url', {
+        profileName,
+        ...(params ?? {}),
+      });
+      applyState(set, payload.state);
+      return payload.result;
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : 'Failed to generate connect URL' });
+      throw error;
+    }
   },
 
-  toggleEnabledPlatform: (platform) => {
-    commitSnapshot(set, (state) => ({
-      ...state,
-      enabledPlatforms: {
-        ...state.enabledPlatforms,
-        [platform]: !state.enabledPlatforms[platform],
-      },
-    }));
-  },
+  publishPost: async (postId) => requestAndApply(set, 'social.station.publish_post', { postId }),
 
-  updateDraft: (updates) => {
-    commitSnapshot(set, (state) => ({
-      ...state,
-      draft: {
-        ...state.draft,
-        ...updates,
-      },
-    }));
-  },
+  updateDraft: async (updates) => requestAndApply(set, 'social.station.update_draft', { updates }),
 
-  updateAutomation: (updates) => {
-    commitSnapshot(set, (state) => ({
-      ...state,
-      automation: {
-        ...state.automation,
-        ...updates,
-      },
-    }));
-  },
+  updateAutomation: async (updates) => requestAndApply(set, 'social.station.update_automation', { updates }),
 
-  setFeedFilter: (filter) => {
-    commitSnapshot(set, (state) => ({
-      ...state,
-      feedFilter: filter,
-    }));
-  },
+  setFeedFilter: async (feedFilter) => requestAndApply(set, 'social.station.set_feed_filter', { feedFilter }),
 
-  createPost: (status) => {
-    commitSnapshot(set, (state) => {
-      const activePlatforms = SOCIAL_PLATFORMS.filter((platform) => state.enabledPlatforms[platform.key]).map((platform) => platform.key);
-      const caption = state.draft.caption.trim();
-      if (activePlatforms.length === 0 || !caption) {
-        return state;
-      }
+  createPost: async (status) => requestAndApply(set, 'social.station.create_post', { status, source: 'manual' }),
 
-      const nextPost: SocialPostItem = {
-        id: makeId('social'),
-        title: caption.slice(0, 42),
-        caption,
-        date: state.selectedDate,
-        time: state.draft.scheduleTime,
-        platforms: activePlatforms,
-        status,
-        format: state.draft.selectedFormat,
-      };
+  updatePost: async (postId, patch) => requestAndApply(set, 'social.station.update_post', { postId, patch }),
 
-      return {
-        ...state,
-        activeTab: 'feed',
-        posts: [nextPost, ...state.posts],
-        draft: {
-          ...state.draft,
-          caption: '',
-          supportingText: '',
-          firstComment: '',
-          hashtags: '',
-          cta: '',
-          uploads: [],
-        },
-      };
-    });
-  },
+  deletePost: async (postId) => requestAndApply(set, 'social.station.delete_post', { postId }),
+
+  upsertRssFeed: async (feed) => requestAndApply(set, 'social.station.upsert_rss_feed', { feed }),
+
+  removeRssFeed: async (feedId) => requestAndApply(set, 'social.station.remove_rss_feed', { feedId }),
+
+  previewRssFeed: async (url) => requestAndApply(set, 'social.station.preview_rss_feed', { url }),
+
+  launchAgent: async () => requestAndApply(set, 'social.station.launch_agent'),
 }));
+
+export const SOCIAL_PLATFORMS: SocialPlatformDefinition[] = [
+  { key: 'tiktok', label: 'TikTok', glyph: 'TT', accentClass: 'is-tiktok', supports: ['video', 'reel', 'agent'] },
+  { key: 'instagram', label: 'Instagram', glyph: 'IG', accentClass: 'is-instagram', supports: ['post', 'story', 'reel', 'agent'] },
+  { key: 'x', label: 'X', glyph: 'X', accentClass: 'is-x', supports: ['post', 'thread', 'agent'] },
+  { key: 'facebook', label: 'Facebook', glyph: 'FB', accentClass: 'is-facebook', supports: ['post', 'story', 'reel', 'agent'] },
+];
