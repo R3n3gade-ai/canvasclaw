@@ -16,7 +16,6 @@ export function FeatureWorkspace({ onExit }: FeatureWorkspaceProps) {
   }
 
   const ActiveWorkspace = FEATURE_WORKSPACE_COMPONENTS[activeFeature];
-  const shouldUseFloatingBack = activeFeature !== 'kanban' && activeFeature !== 'socialStation' && activeFeature !== 'creativeStudio';
   const handleExit = () => {
     closeFeature();
     onExit();
@@ -25,17 +24,6 @@ export function FeatureWorkspace({ onExit }: FeatureWorkspaceProps) {
   return (
     <div className="feature-workspace">
       <div className="feature-workspace__body">
-        {shouldUseFloatingBack && (
-          <>
-            <button
-              type="button"
-              className="feature-workspace__back feature-workspace__back--floating"
-              onClick={handleExit}
-            >
-              Back to chat
-            </button>
-          </>
-        )}
         <Suspense
           fallback={
             <div className="feature-placeholder animate-rise">

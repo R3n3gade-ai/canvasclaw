@@ -17,7 +17,10 @@
 
 .project-flow__topbar {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(14rem, 0.7fr) minmax(0, 1.4fr);
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'nodes actions'
+    'title title';
   gap: 0.55rem;
   align-items: center;
   padding: 0.45rem 0.6rem;
@@ -26,7 +29,7 @@
 
 .project-flow__node-rail,
 .project-flow__template-rail,
-.project-flow__topbar-center,
+.project-flow__topbar-title,
 .project-flow__drawing-actions,
 .project-flow__action-row,
 .project-flow__checklist-add,
@@ -43,6 +46,18 @@
   scrollbar-width: none;
 }
 
+.project-flow__node-rail {
+  grid-area: nodes;
+}
+
+.project-flow__template-rail {
+  grid-area: actions;
+}
+
+.project-flow__topbar-title {
+  grid-area: title;
+}
+
 .project-flow__node-rail::-webkit-scrollbar,
 .project-flow__template-rail::-webkit-scrollbar {
   display: none;
@@ -52,24 +67,20 @@
   justify-content: flex-start;
 }
 
-.project-flow__topbar-center {
-  justify-content: center;
-}
-
 .project-flow__template-rail {
   justify-content: flex-end;
 }
 
 .project-flow__board-title {
   min-width: 0;
-  width: 100%;
+  width: min(100%, 30rem);
   border: none;
   background: transparent;
   color: var(--text-strong);
   font-size: 1rem;
   font-weight: 800;
   letter-spacing: -0.03em;
-  text-align: center;
+  text-align: left;
   outline: none;
 }
 
@@ -121,6 +132,68 @@
   font-size: 0.7rem;
   font-weight: 800;
   letter-spacing: 0.02em;
+}
+
+.project-flow__dropdown {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.project-flow__dropdown summary {
+  list-style: none;
+}
+
+.project-flow__dropdown summary::-webkit-details-marker {
+  display: none;
+}
+
+.project-flow__dropdown[open] > .project-flow__dropdown-summary {
+  border-color: color-mix(in oklab, var(--accent) 56%, var(--border));
+  background: color-mix(in oklab, var(--accent) 12%, var(--panel));
+}
+
+.project-flow__dropdown-menu {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  left: 0;
+  z-index: 12;
+  display: grid;
+  gap: 0.35rem;
+  min-width: 10rem;
+  padding: 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--panel-strong) 90%, black), color-mix(in oklab, var(--card) 90%, black));
+  box-shadow: 0 18px 32px rgba(2, 8, 23, 0.3);
+}
+
+.project-flow__dropdown-menu--right {
+  left: auto;
+  right: 0;
+}
+
+.project-flow__dropdown-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.45rem;
+  align-items: center;
+  padding: 0.52rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--panel) 92%, black);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.project-flow__dropdown-item small {
+  color: var(--muted);
+  font-size: 0.69rem;
+  font-weight: 600;
+}
+
+.project-flow__dropdown-item:hover {
+  border-color: color-mix(in oklab, var(--accent) 48%, var(--border));
 }
 
 .project-flow__mode-pill.is-active,
@@ -614,6 +687,14 @@
 }
 
 @media (max-width: 960px) {
+  .project-flow__topbar {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'nodes'
+      'actions'
+      'title';
+  }
+
   .project-flow__topbar {
     grid-template-columns: 1fr;
     align-items: start;

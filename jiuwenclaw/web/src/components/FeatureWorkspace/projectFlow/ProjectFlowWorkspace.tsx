@@ -33,8 +33,11 @@ import './ProjectFlowWorkspace.css';
 
 const DRAG_MIME = 'application/deep-canvas-project-flow-node';
 const DRAWING_VIEWBOX = { width: 1000, height: 620 };
-const HEADER_NODE_KINDS: ProjectFlowNodeKind[] = ['project', 'code', 'note', 'story', 'art', 'document', 'url', 'image', 'video', 'drawing'];
+const HEADER_NODE_KINDS: ProjectFlowNodeKind[] = ['project', 'note', 'document', 'url', 'image', 'video', 'drawing'];
+const HEADER_NODE_MENU_KINDS: ProjectFlowNodeKind[] = ['code', 'story', 'art'];
 const NODE_TYPES = { projectFlowNode: ProjectFlowCanvasNode };
+
+const VISIBLE_TEMPLATE_IDS = new Set(['blank', 'delivery']);
 
 const CODE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.java', '.kt', '.rb', '.php', '.cs', '.swift', '.sql']);
 const TEXT_EXTENSIONS = new Set(['.md', '.txt', '.json', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.env', '.csv', '.xml', '.html', '.css', '.scss', '.less']);
@@ -596,6 +599,14 @@ function ProjectFlowWorkspaceInner() {
   const drawingSurfaceRef = useRef<HTMLDivElement | null>(null);
 
   const drawingNode = useMemo(() => nodes.find((node) => node.id === drawingNodeId) ?? null, [drawingNodeId, nodes]);
+  const visibleTemplates = useMemo(
+    () => PROJECT_FLOW_TEMPLATES.filter((template) => VISIBLE_TEMPLATE_IDS.has(template.id)),
+    []
+  );
+  const compactTemplates = useMemo(
+    () => PROJECT_FLOW_TEMPLATES.filter((template) => !VISIBLE_TEMPLATE_IDS.has(template.id)),
+    []
+  );
 
   const exportSnapshot = useMemo<ProjectFlowSnapshot>(
     () => ({
@@ -818,6 +829,14 @@ function ProjectFlowWorkspaceInner() {
     [openDrawingEditor]
   );
 
+  const handleTemplateLoad = useCallback(
+    (templateId: (typeof PROJECT_FLOW_TEMPLATES)[number]['id'], templateTitle: string) => {
+      loadTemplate(templateId);
+      setStatusMessage(`${templateTitle} loaded.`);
+    },
+    [loadTemplate]
+  );
+
   return (
     <div className="project-flow animate-rise">
       <div className="project-flow__topbar">
@@ -840,33 +859,61 @@ function ProjectFlowWorkspaceInner() {
               </button>
             );
           })}
-        </div>
-
-        <div className="project-flow__topbar-center">
-          <input
-            value={boardTitle}
-            onChange={(event) => setBoardTitle(event.target.value)}
-            className="project-flow__board-title"
-            placeholder="Board title"
-            title="Board title"
-          />
+          <details className="project-flow__dropdown">
+            <summary className="project-flow__header-node project-flow__dropdown-summary">
+              <span className="project-flow__library-icon">•••</span>
+              <span>More</span>
+            </summary>
+            <div className="project-flow__dropdown-menu" role="menu" aria-label="More node types">
+              {HEADER_NODE_MENU_KINDS.map((kind) => {
+                const item = PROJECT_FLOW_NODE_LIBRARY.find((entry) => entry.kind === kind);
+                if (!item) return null;
+                return (
+                  <button
+                    key={kind}
+                    type="button"
+                    className="project-flow__dropdown-item"
+                    onClick={() => handleQuickAdd(kind)}
+                    title={item.label}
+                  >
+                    <span className={`project-flow__library-icon project-flow__library-icon--${kind}`}>{item.icon}</span>
+                    <span>{item.shortLabel}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </details>
         </div>
 
         <div className="project-flow__template-rail">
-          {PROJECT_FLOW_TEMPLATES.map((template) => (
+          {visibleTemplates.map((template) => (
             <button
               key={template.id}
               type="button"
               className="project-flow__template-pill"
-              onClick={() => {
-                loadTemplate(template.id);
-                setStatusMessage(`${template.title} loaded.`);
-              }}
+              onClick={() => handleTemplateLoad(template.id, template.title)}
               title={template.description}
             >
               {template.shortLabel}
             </button>
           ))}
+          <details className="project-flow__dropdown project-flow__dropdown--templates">
+            <summary className="project-flow__template-pill project-flow__dropdown-summary">Boards</summary>
+            <div className="project-flow__dropdown-menu project-flow__dropdown-menu--right" role="menu" aria-label="More board templates">
+              {compactTemplates.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  className="project-flow__dropdown-item"
+                  onClick={() => handleTemplateLoad(template.id, template.title)}
+                  title={template.description}
+                >
+                  <span>{template.shortLabel}</span>
+                  <small>{template.title}</small>
+                </button>
+              ))}
+            </div>
+          </details>
           <button type="button" className="project-flow__ghost-button" onClick={() => ingestFilesInputRef.current?.click()}>
             Ingest files
           </button>
@@ -882,6 +929,16 @@ function ProjectFlowWorkspaceInner() {
           <button type="button" className="project-flow__ghost-button" onClick={() => setIsSettingsOpen((value) => !value)}>
             Settings
           </button>
+        </div>
+
+        <div className="project-flow__topbar-title">
+          <input
+            value={boardTitle}
+            onChange={(event) => setBoardTitle(event.target.value)}
+            className="project-flow__board-title"
+            placeholder="Board title"
+            title="Board title"
+          />
         </div>
       </div>
 
